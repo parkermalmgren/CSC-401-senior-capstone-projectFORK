@@ -9,7 +9,7 @@ import { suggestExpirationDate } from "@/lib/api";
 interface AddItemModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onCreate: (item: { name: string; quantity: number; expiration_date?: string | null }) => Promise<void>;
+  onCreate: (item: { name: string; quantity: number; expiration_date?: string | null; storage_type?: string; is_opened?: boolean }) => Promise<void>;
   isPending?: boolean;
 }
 
@@ -17,6 +17,8 @@ export default function AddItemModal({ isOpen, onClose, onCreate, isPending = fa
   const [name, setName] = useState("");
   const [quantity, setQuantity] = useState("1");
   const [expirationDate, setExpirationDate] = useState("");
+  const [storageType, setStorageType] = useState<"pantry" | "fridge" | "freezer">("pantry");
+  const [isOpened, setIsOpened] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
@@ -27,21 +29,26 @@ export default function AddItemModal({ isOpen, onClose, onCreate, isPending = fa
   const [suggestingExpiration, setSuggestingExpiration] = useState(false);
   const [suggestedExpiration, setSuggestedExpiration] = useState<string | null>(null);
   const [expirationConfidence, setExpirationConfidence] = useState<"high" | "medium" | "low" | null>(null);
+  const [recommendedStorage, setRecommendedStorage] = useState<string | null>(null);
 
   // Fetch expiration suggestion function
-  const fetchExpirationSuggestion = useCallback(async (itemName: string) => {
+  const fetchExpirationSuggestion = useCallback(async (itemName: string, usdaFood?: any) => {
     if (!itemName.trim()) return;
     
     try {
       setSuggestingExpiration(true);
       const suggestion = await suggestExpirationDate({
         name: itemName.trim(),
-        storage_type: "pantry", // Default to pantry, can be enhanced later
+        storage_type: storageType,
+        is_opened: isOpened,
+        usda_fdc_id: usdaFood?.fdcId || null,
+        usda_food_category: usdaFood?.foodCategory?.description || null,
       });
       
       if (suggestion.suggested_date) {
         setSuggestedExpiration(suggestion.suggested_date);
         setExpirationConfidence(suggestion.confidence);
+        setRecommendedStorage(suggestion.recommended_storage_type);
         
         // Auto-fill expiration date if it's empty or if confidence is high
         setExpirationDate((currentDate) => {
@@ -50,6 +57,15 @@ export default function AddItemModal({ isOpen, onClose, onCreate, isPending = fa
           }
           return currentDate;
         });
+        
+        // Auto-set recommended storage type if available and user hasn't manually changed it
+        // Only auto-set if storage is still at default (pantry) or if name was just entered
+        if (suggestion.recommended_storage_type) {
+          // Auto-set if it's the default or if we just got a recommendation
+          if (storageType === "pantry" || !name.trim()) {
+            setStorageType(suggestion.recommended_storage_type as "pantry" | "fridge" | "freezer");
+          }
+        }
       }
     } catch (err) {
       console.error("Error fetching expiration suggestion:", err);
@@ -103,7 +119,18 @@ export default function AddItemModal({ isOpen, onClose, onCreate, isPending = fa
       setSuggestedExpiration(null);
       setExpirationConfidence(null);
     }
-  }, [name, selectedFood, isOpen, fetchExpirationSuggestion]);
+  }, [name, selectedFood, isOpen, storageType, isOpened, fetchExpirationSuggestion]);
+  
+  // Re-fetch expiration when storage type or opened status changes (if we have a name)
+  useEffect(() => {
+    if (!isOpen || !name.trim() || name.trim().length < 3) return;
+    
+    const timer = setTimeout(() => {
+      fetchExpirationSuggestion(name, selectedFood);
+    }, 300);
+    
+    return () => clearTimeout(timer);
+  }, [storageType, isOpened, name, selectedFood, isOpen, fetchExpirationSuggestion]);
 
   if (!isOpen) return null;
 
@@ -145,6 +172,8 @@ export default function AddItemModal({ isOpen, onClose, onCreate, isPending = fa
         name: name.trim(),
         quantity: quantityNum,
         expiration_date: expirationDate || null,
+        storage_type: storageType,
+        is_opened: isOpened,
       });
 
       // Reset form and close modal on success
@@ -154,6 +183,7 @@ export default function AddItemModal({ isOpen, onClose, onCreate, isPending = fa
       setError(null);
       setSuggestedExpiration(null);
       setExpirationConfidence(null);
+      setRecommendedStorage(null);
       setSelectedFood(null);
       setSearchQuery("");
       setSearchResults([]);
@@ -170,6 +200,8 @@ export default function AddItemModal({ isOpen, onClose, onCreate, isPending = fa
       setName("");
       setQuantity("1");
       setExpirationDate("");
+      setStorageType("pantry");
+      setIsOpened(false);
       setError(null);
       setSearchQuery("");
       setSearchResults([]);
@@ -187,9 +219,9 @@ export default function AddItemModal({ isOpen, onClose, onCreate, isPending = fa
     setName(foodName);
     setSearchQuery(foodName);
     setShowResults(false);
-    // Suggest expiration for selected food
+    // Suggest expiration for selected food (pass USDA data if available)
     if (foodName.trim()) {
-      fetchExpirationSuggestion(foodName);
+      fetchExpirationSuggestion(foodName, food);
     }
   };
 
@@ -310,6 +342,65 @@ export default function AddItemModal({ isOpen, onClose, onCreate, isPending = fa
             />
           </div>
 
+          {/* Storage Type */}
+          <div>
+            <label htmlFor="storage-type" className="block text-sm font-medium text-gray-700 mb-1">
+              Storage Location <span className="text-red-500">*</span>
+            </label>
+            <select
+              id="storage-type"
+              value={storageType}
+              onChange={(e) => {
+                setStorageType(e.target.value as "pantry" | "fridge" | "freezer");
+                // Re-fetch expiration suggestion when storage type changes
+                if (name.trim().length >= 3) {
+                  fetchExpirationSuggestion(name, selectedFood);
+                }
+              }}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none transition-colors"
+              disabled={submitting || isPending}
+            >
+              <option value="pantry">Pantry / Room Temperature</option>
+              <option value="fridge">Refrigerator</option>
+              <option value="freezer">Freezer</option>
+            </select>
+            {recommendedStorage && recommendedStorage === storageType && expirationConfidence && expirationConfidence !== "low" && (
+              <p className="text-xs text-green-600 mt-1">
+                ✓ Recommended storage location based on item type
+              </p>
+            )}
+            {recommendedStorage && recommendedStorage !== storageType && (
+              <p className="text-xs text-amber-600 mt-1">
+                💡 Recommended: {recommendedStorage === "fridge" ? "Refrigerator" : recommendedStorage === "freezer" ? "Freezer" : "Pantry"}
+              </p>
+            )}
+          </div>
+
+          {/* Opened/Closed Status */}
+          <div>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={isOpened}
+                onChange={(e) => {
+                  setIsOpened(e.target.checked);
+                  // Re-fetch expiration suggestion when opened status changes
+                  if (name.trim().length >= 3) {
+                    fetchExpirationSuggestion(name, selectedFood);
+                  }
+                }}
+                className="w-4 h-4 text-green-600 border-gray-300 rounded focus:ring-green-500"
+                disabled={submitting || isPending}
+              />
+              <span className="text-sm font-medium text-gray-700">
+                Item has been opened
+              </span>
+            </label>
+            <p className="text-xs text-gray-500 mt-1 ml-6">
+              Opened items typically have shorter shelf life
+            </p>
+          </div>
+
           {/* Expiration Date */}
           <div>
             <label htmlFor="expiration-date" className="block text-sm font-medium text-gray-700 mb-1">
@@ -335,6 +426,9 @@ export default function AddItemModal({ isOpen, onClose, onCreate, isPending = fa
                   </span>
                   {expirationConfidence === "high" && (
                     <span className="text-xs text-green-700 font-medium">(High confidence)</span>
+                  )}
+                  {expirationConfidence === "medium" && (
+                    <span className="text-xs text-blue-600">(Medium confidence)</span>
                   )}
                   {expirationConfidence === "low" && (
                     <span className="text-xs text-yellow-600">(Estimate - you may want to adjust)</span>

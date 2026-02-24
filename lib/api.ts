@@ -19,6 +19,8 @@ export interface CreateItemRequest {
   name: string;
   quantity?: number;
   expiration_date?: string | null; // ISO date string
+  storage_type?: string; // "pantry", "fridge", "freezer"
+  is_opened?: boolean;
 }
 
 export interface UpdateItemRequest {
@@ -429,6 +431,9 @@ export interface ExpirationSuggestionRequest {
   name: string;
   storage_type?: string;
   purchased_date?: string | null;
+  is_opened?: boolean;
+  usda_fdc_id?: number | null;
+  usda_food_category?: string | null;
 }
 
 export interface ExpirationSuggestionResponse {
@@ -436,6 +441,7 @@ export interface ExpirationSuggestionResponse {
   days_from_now: number | null;
   confidence: "high" | "medium" | "low";
   category: string | null;
+  recommended_storage_type: string | null; // "pantry", "fridge", "freezer"
 }
 
 export async function suggestExpirationDate(

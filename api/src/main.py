@@ -70,11 +70,15 @@ class ItemCreate(BaseModel):
     name: str
     quantity: int = 1
     expiration_date: Optional[date] = None
+    storage_type: Optional[str] = "pantry"  # "pantry", "fridge", "freezer"
+    is_opened: Optional[bool] = False  # Whether the item has been opened
 
 class ItemUpdate(BaseModel):
     name: Optional[str] = None
     quantity: Optional[int] = None
     expiration_date: Optional[date] = None
+    storage_type: Optional[str] = None
+    is_opened: Optional[bool] = None
 
 class ProfileUpdate(BaseModel):
     name: Optional[str] = None
@@ -95,12 +99,16 @@ class ExpirationSuggestionRequest(BaseModel):
     name: str
     storage_type: Optional[str] = None  # "pantry", "fridge", "freezer"
     purchased_date: Optional[date] = None
+    is_opened: Optional[bool] = False  # Whether the item has been opened
+    usda_fdc_id: Optional[int] = None  # USDA FoodData Central ID for better categorization
+    usda_food_category: Optional[str] = None  # USDA food category if available
 
 class ExpirationSuggestionResponse(BaseModel):
     suggested_date: Optional[str]  # ISO date string
     days_from_now: Optional[int]
     confidence: str  # "high", "medium", "low"
     category: Optional[str] = None
+    recommended_storage_type: Optional[str] = None  # "pantry", "fridge", "freezer"
 
 class JoinHouseholdRequest(BaseModel):
     household_id: str
@@ -551,12 +559,16 @@ def create_item(item_data: ItemCreate, user_id: Optional[str] = Depends(get_user
         )
     
     try:
-        logger.info(f"Creating item '{item_data.name}' (qty: {item_data.quantity}) for user: {user_id}")
+        storage_type = item_data.storage_type or "pantry"
+        is_opened = item_data.is_opened if item_data.is_opened is not None else False
+        logger.info(f"Creating item '{item_data.name}' (qty: {item_data.quantity}, storage: {storage_type}, opened: {is_opened}) for user: {user_id}")
         new_item = {
             "user_id": user_id,
             "name": item_data.name,
             "quantity": item_data.quantity,
-            "expiration_date": item_data.expiration_date.isoformat() if item_data.expiration_date else None
+            "expiration_date": item_data.expiration_date.isoformat() if item_data.expiration_date else None,
+            "storage_type": storage_type,
+            "is_opened": is_opened
         }
         
         response = supabase.table("items").insert(new_item).execute()
@@ -595,6 +607,10 @@ def update_item(item_id: str, item_data: ItemUpdate, user_id: Optional[str] = De
             logger.warning(f"Invalid quantity {item_data.quantity} for item {item_id}")
             raise HTTPException(status_code=400, detail="Quantity must be at least 1")
         update_data["quantity"] = item_data.quantity
+    if item_data.storage_type is not None:
+        update_data["storage_type"] = item_data.storage_type
+    if item_data.is_opened is not None:
+        update_data["is_opened"] = item_data.is_opened
     if item_data.expiration_date is not None:
         if item_data.expiration_date < date.today():
             logger.warning(f"Invalid expiration date {item_data.expiration_date} for item {item_id}")
@@ -684,141 +700,619 @@ def get_expiring_items(
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
 # Expiration suggestion rules (in days from purchase/current date)
-# Based on common food shelf life guidelines
+# Based on common food shelf life guidelines from USDA, FDA, and food safety organizations
 EXPIRATION_RULES = {
     # Dairy products (refrigerated)
     "dairy": {
-        "keywords": ["milk", "cream", "yogurt", "cheese", "butter", "sour cream", "cottage cheese"],
-        "pantry": None,  # Not typically stored in pantry
+        "keywords": [
+            # Milk and cream
+            "milk", "whole milk", "2% milk", "1% milk", "skim milk", "nonfat milk", "cream", "heavy cream", "whipping cream", "light cream", "half and half", "buttermilk", "evaporated milk", "condensed milk", "sweetened condensed milk",
+            # Yogurt
+            "yogurt", "greek yogurt", "plain yogurt", "vanilla yogurt", "yogurt drink", "kefir", "drinkable yogurt",
+            # Cheese (general)
+            "cheese", "cheddar", "swiss", "gouda", "brie", "feta", "parmesan", "mozzarella", "ricotta", "cottage cheese", "cream cheese", "mascarpone", "sour cream", "butter", "salted butter", "unsalted butter", "european butter",
+            # Additional cheeses
+            "provolone", "monterey jack", "colby", "pepper jack", "muenster", "havarti", "fontina", "asiago", "pecorino", "romano", "manchego", "gruyere", "emmental", "camembert", "goat cheese", "chevre", "blue cheese", "gorgonzola", "roquefort", "stilton", "cheddar cheese", "swiss cheese",
+            # Processed cheese
+            "american cheese", "velveeta", "cheese spread", "cheese dip", "string cheese", "cheese sticks",
+        ],
+        "usda_categories": ["Dairy and Egg Products"],
+        "pantry": None,
         "fridge": 7,  # 7 days
         "freezer": 90,  # 3 months
     },
+    # Soft cheeses (shorter shelf life)
+    "dairy_soft": {
+        "keywords": ["cream cheese", "cottage cheese", "ricotta", "mozzarella", "brie", "camembert", "goat cheese", "fresh cheese"],
+        "pantry": None,
+        "fridge": 5,  # 5 days
+        "freezer": 60,  # 2 months
+    },
+    # Hard cheeses (longer shelf life)
+    "dairy_hard": {
+        "keywords": ["parmesan", "cheddar", "swiss", "gouda", "asiago", "pecorino", "romano", "aged cheese"],
+        "pantry": None,
+        "fridge": 30,  # 30 days
+        "freezer": 180,  # 6 months
+    },
     # Meat & Poultry (refrigerated)
     "meat": {
-        "keywords": ["chicken", "beef", "pork", "turkey", "lamb", "steak", "ground", "sausage", "bacon", "ham"],
+        "keywords": [
+            # Poultry
+            "chicken", "turkey", "duck", "goose", "cornish hen", "chicken breast", "chicken thigh", "chicken wing", "chicken leg", "chicken drumstick", "whole chicken", "chicken parts",
+            # Beef
+            "beef", "steak", "ribeye", "sirloin", "tenderloin", "filet mignon", "strip steak", "t-bone", "porterhouse", "flank steak", "skirt steak", "brisket", "roast beef", "beef roast", "chuck roast", "pot roast", "beef stew meat", "beef tips",
+            # Pork
+            "pork", "pork chop", "pork tenderloin", "pork loin", "pork shoulder", "pork butt", "pork ribs", "baby back ribs", "spare ribs", "country ribs", "pork belly",
+            # Lamb and other
+            "lamb", "lamb chop", "lamb leg", "lamb shoulder", "veal", "venison", "bison", "buffalo", "elk", "rabbit",
+            # Processed meats
+            "sausage", "bacon", "ham", "deli meat", "lunch meat", "cold cuts", "salami", "pepperoni", "prosciutto", "pancetta", "chorizo", "andouille", "bratwurst", "italian sausage", "breakfast sausage", "hot dog", "hotdogs", "frankfurter", "wieners",
+            # Ground meats
+            "ground beef", "ground turkey", "ground pork", "ground chicken", "ground lamb", "ground meat", "mince", "meatballs",
+        ],
+        "usda_categories": ["Poultry Products", "Beef Products", "Pork Products", "Lamb, Veal, and Game Products"],
         "pantry": None,
         "fridge": 3,  # 3 days
         "freezer": 180,  # 6 months
     },
-    # Seafood
-    "seafood": {
-        "keywords": ["fish", "salmon", "tuna", "shrimp", "crab", "lobster", "seafood"],
+    # Ground meat (shorter shelf life)
+    "meat_ground": {
+        "keywords": ["ground beef", "ground turkey", "ground pork", "ground chicken", "ground lamb", "ground meat", "mince"],
         "pantry": None,
         "fridge": 2,  # 2 days
         "freezer": 90,  # 3 months
     },
-    # Produce - Perishable
+    # Seafood
+    "seafood": {
+        "keywords": [
+            # Fish
+            "fish", "salmon", "tuna", "cod", "tilapia", "halibut", "mackerel", "sardines", "anchovies", "sea bass", "trout", "catfish", "snapper", "grouper", "swordfish", "mahi mahi", "bass", "perch", "walleye", "pike", "flounder", "sole", "pollock", "haddock", "whiting", "rockfish", "red snapper", "yellowtail", "branzino", "arctic char", "sturgeon",
+            # Shellfish
+            "shrimp", "crab", "lobster", "oysters", "mussels", "clams", "scallops", "crayfish", "crawfish", "langoustine", "prawns", "king crab", "snow crab", "dungeness crab", "blue crab", "stone crab",
+            # Other seafood
+            "squid", "calamari", "octopus", "cuttlefish", "sea urchin", "uni", "abalone", "conch", "whelk",
+            # Canned seafood
+            "canned tuna", "canned salmon", "canned sardines", "canned anchovies", "canned mackerel",
+        ],
+        "usda_categories": ["Finfish and Shellfish Products"],
+        "pantry": None,
+        "fridge": 2,  # 2 days
+        "freezer": 90,  # 3 months
+    },
+    # Shellfish (very short shelf life)
+    "seafood_shellfish": {
+        "keywords": ["shrimp", "crab", "lobster", "oysters", "mussels", "clams", "scallops", "crayfish"],
+        "pantry": None,
+        "fridge": 1,  # 1 day
+        "freezer": 90,  # 3 months
+    },
+    # Produce - Perishable (leafy greens, berries)
     "produce_perishable": {
-        "keywords": ["lettuce", "spinach", "kale", "broccoli", "carrots", "celery", "bell pepper", "cucumber", "tomato", "berries", "grapes"],
+        "keywords": [
+            # Leafy greens
+            "lettuce", "spinach", "kale", "arugula", "chard", "collard greens", "mustard greens", "bok choy", "napa cabbage", "swiss chard", "watercress", "endive", "frisée", "radicchio", "mache", "lambs lettuce",
+            # Vegetables
+            "broccoli", "carrots", "celery", "bell pepper", "cucumber", "tomato", "mushrooms", "asparagus", "green beans", "zucchini", "squash", "eggplant", "cauliflower", "brussels sprouts", "cabbage", "radishes", "turnips", "beets", "corn on the cob",
+            # Peppers
+            "bell pepper", "red pepper", "green pepper", "yellow pepper", "orange pepper", "jalapeño", "jalapeno", "serrano", "habanero", "poblano", "anaheim", "banana pepper",
+            # Berries and small fruits
+            "berries", "grapes", "strawberries", "blueberries", "raspberries", "blackberries", "cherries", "cranberries", "gooseberries", "currants", "elderberries", "mulberries",
+            # Other perishable produce
+            "artichoke", "artichokes", "fennel", "leeks", "scallions", "green onions", "spring onions", "shallots", "okra", "pattypan squash", "yellow squash", "summer squash", "acorn squash", "butternut squash", "spaghetti squash", "delicata squash",
+        ],
+        "usda_categories": ["Vegetables and Vegetable Products", "Fruits and Fruit Juices"],
         "pantry": None,
         "fridge": 7,  # 7 days
-        "freezer": 30,  # 1 month (if frozen)
+        "freezer": 30,  # 1 month
     },
-    # Produce - Longer lasting
+    # Leafy greens (very perishable)
+    "produce_leafy": {
+        "keywords": ["lettuce", "spinach", "kale", "arugula", "chard", "collard greens", "mustard greens", "mesclun", "spring mix", "baby spinach", "romaine", "iceberg"],
+        "pantry": None,
+        "fridge": 5,  # 5 days
+        "freezer": 30,
+    },
+    # Berries (very perishable)
+    "produce_berries": {
+        "keywords": ["strawberries", "blueberries", "raspberries", "blackberries", "cranberries", "gooseberries", "currants"],
+        "pantry": None,
+        "fridge": 5,  # 5 days
+        "freezer": 180,  # 6 months
+    },
+    # Produce - Longer lasting (root vegetables, citrus, apples)
     "produce_long": {
-        "keywords": ["potato", "onion", "garlic", "apple", "orange", "banana"],
+        "keywords": [
+            # Root vegetables
+            "potato", "onion", "garlic", "sweet potato", "yam", "ginger", "shallot", "leek", "turnip", "rutabaga", "parsnip", "beet", "carrot", "daikon", "radish", "jicama", "celeriac", "celery root",
+            # Apples and pears
+            "apple", "pear", "granny smith", "gala", "fuji", "honeycrisp", "red delicious", "golden delicious", "bosc pear", "anjou pear", "bartlett pear",
+            # Citrus
+            "orange", "lemon", "lime", "grapefruit", "tangerine", "clementine", "mandarin", "blood orange", "cara cara", "satsuma", "pomelo", "yuzu", "kumquat",
+            # Stone fruits
+            "banana", "plum", "peach", "nectarine", "apricot", "cherry", "sweet cherry", "sour cherry",
+            # Tropical fruits
+            "avocado", "mango", "pineapple", "watermelon", "cantaloupe", "honeydew", "kiwi", "papaya", "guava", "passion fruit", "dragon fruit", "lychee", "rambutan", "starfruit", "carambola", "persimmon", "pomegranate", "coconut", "fresh coconut",
+            # Other longer-lasting fruits
+            "figs", "dates", "fresh dates", "plantain", "banana plantain",
+        ],
         "pantry": 30,  # 30 days
         "fridge": 14,  # 14 days
         "freezer": 90,  # 3 months
     },
+    # Root vegetables (very long lasting)
+    "produce_root": {
+        "keywords": ["potato", "sweet potato", "yam", "onion", "garlic", "shallot", "ginger", "turnip", "rutabaga", "parsnip", "beet", "carrot"],
+        "pantry": 60,  # 60 days
+        "fridge": 30,  # 30 days
+        "freezer": 180,  # 6 months
+    },
     # Bread & Bakery
     "bread": {
-        "keywords": ["bread", "bagel", "muffin", "roll", "bun", "croissant"],
+        "keywords": ["bread", "bagel", "muffin", "roll", "bun", "croissant", "biscuit", "danish", "donut", "doughnut", "pastry", "pita", "tortilla", "naan", "flatbread", "sourdough", "rye bread", "wheat bread", "white bread", "whole grain"],
+        "usda_categories": ["Baked Products"],
         "pantry": 5,  # 5 days
         "fridge": 7,  # 7 days
         "freezer": 90,  # 3 months
     },
     # Eggs
     "eggs": {
-        "keywords": ["egg", "eggs"],
+        "keywords": ["egg", "eggs", "chicken egg", "duck egg", "quail egg"],
+        "usda_categories": ["Dairy and Egg Products"],
         "pantry": None,
         "fridge": 21,  # 3 weeks
-        "freezer": None,  # Not typically frozen
+        "freezer": None,
     },
     # Canned goods
     "canned": {
-        "keywords": ["can", "canned", "soup", "beans", "corn", "peas", "tuna can"],
+        "keywords": ["can", "canned", "soup", "beans", "corn", "peas", "tuna can", "salmon can", "sardines can", "tomatoes can", "tomato paste", "tomato sauce", "broth", "stock", "canned fruit", "canned vegetables", "canned meat"],
         "pantry": 365,  # 1 year
         "fridge": 365,  # Same after opening
         "freezer": None,
     },
-    # Dry goods
+    # Dry goods (grains, legumes, etc.)
     "dry": {
-        "keywords": ["pasta", "rice", "flour", "sugar", "cereal", "oats", "quinoa", "lentils", "beans dry"],
-        "pantry": 365,  # 1 year
-        "fridge": 365,
-        "freezer": 365,
+        "keywords": ["pasta", "rice", "flour", "cereal", "oats", "quinoa", "lentils", "beans dry", "black beans", "kidney beans", "chickpeas", "garbanzo", "barley", "bulgur", "couscous", "buckwheat", "millet", "farro", "wild rice", "brown rice", "white rice", "basmati", "jasmine rice", "breadcrumbs", "cornmeal", "yeast", "active dry yeast", "instant yeast"],
+        "usda_categories": ["Cereal Grains and Pasta"],
+        "pantry": 730,  # 2 years (grains and legumes)
+        "fridge": 730,
+        "freezer": 730,
     },
     # Snacks & Packaged
     "packaged": {
-        "keywords": ["chips", "crackers", "cookies", "nuts", "pretzels", "popcorn"],
+        "keywords": ["chips", "crackers", "cookies", "nuts", "pretzels", "popcorn", "trail mix", "granola", "granola bar", "protein bar", "energy bar", "dried fruit", "raisins", "dates", "prunes", "figs", "apricots dried"],
         "pantry": 90,  # 3 months
         "fridge": 90,
         "freezer": 180,  # 6 months
     },
+    # Nuts (longer shelf life)
+    "nuts": {
+        "keywords": ["almonds", "walnuts", "pecans", "cashews", "peanuts", "pistachios", "hazelnuts", "macadamia", "brazil nuts", "pine nuts", "sunflower seeds", "pumpkin seeds", "chia seeds", "flax seeds", "sesame seeds"],
+        "pantry": 180,  # 6 months
+        "fridge": 365,  # 1 year
+        "freezer": 365,  # 1 year
+    },
     # Beverages
     "beverages": {
-        "keywords": ["juice", "soda", "water", "coffee", "tea"],
+        "keywords": ["juice", "soda", "water", "coffee", "tea", "lemonade", "iced tea", "sports drink", "energy drink", "milk alternative", "almond milk", "soy milk", "oat milk", "coconut milk", "orange juice", "apple juice", "cranberry juice", "grape juice"],
         "pantry": 180,  # 6 months (unopened)
         "fridge": 7,  # 7 days (opened)
         "freezer": None,
     },
+    # Condiments & Sauces (shorter shelf life - opened)
+    "condiments": {
+        "keywords": ["ketchup", "mustard", "relish", "pickles", "olives", "capers", "salsa", "hot sauce", "barbecue sauce", "ranch", "italian dressing", "vinaigrette", "ranch dressing", "caesar dressing", "thousand island", "tartar sauce", "cocktail sauce", "taco sauce", "enchilada sauce"],
+        "pantry": 180,  # 6 months (unopened)
+        "fridge": 90,  # 3 months (opened, refrigerated)
+        "freezer": None,
+    },
+    # Preserves & Spreads
+    "preserves": {
+        "keywords": ["jam", "jelly", "preserves", "marmalade", "fruit spread", "peanut butter", "almond butter", "cashew butter", "sunflower butter", "nutella", "chocolate spread"],
+        "pantry": 365,  # 1 year (unopened)
+        "fridge": 180,  # 6 months (opened)
+        "freezer": None,
+    },
+    # Mayonnaise (shorter shelf life)
+    "condiments_mayo": {
+        "keywords": ["mayonnaise", "mayo", "aioli"],
+        "pantry": None,
+        "fridge": 60,  # 2 months
+        "freezer": None,
+    },
+    # Oils (vinegars moved to pantry_staples)
+    "oils": {
+        "keywords": ["olive oil", "vegetable oil", "canola oil", "coconut oil", "sesame oil", "avocado oil", "grapeseed oil", "sunflower oil", "safflower oil", "peanut oil"],
+        "pantry": 730,  # 2 years (unopened), oils can last 1-2 years
+        "fridge": 730,
+        "freezer": None,
+    },
+    # Spices & Herbs (dried) - Comprehensive list
+    "spices": {
+        "keywords": [
+            # General terms
+            "spice", "herb", "dried herbs", "spice blend", "seasoning", "seasoning blend", "spice mix", "herb mix",
+            # Common herbs
+            "basil", "oregano", "thyme", "rosemary", "sage", "parsley", "cilantro", "dill", "mint", "chives", "tarragon", "marjoram", "chervil", "sumac",
+            # Ground spices
+            "paprika", "cumin", "coriander", "turmeric", "cinnamon", "nutmeg", "cloves", "allspice", "cardamom", "star anise", "bay leaves",
+            # Pepper varieties
+            "black pepper", "white pepper", "red pepper", "cayenne pepper", "cayenne", "crushed red pepper", "red pepper flakes", "pink peppercorns", "green peppercorns", "szechuan pepper", "sichuan pepper",
+            # Seeds
+            "sesame seeds", "poppy seeds", "fennel seeds", "caraway seeds", "celery seeds", "mustard seeds", "cumin seeds", "coriander seeds", "anise seeds", "nigella seeds", "black seeds",
+            # Indian spices
+            "curry powder", "garam masala", "tandoori masala", "chaat masala", "fenugreek", "asafoetida", "hing", "ajwain", "carom seeds", "kalonji",
+            # Middle Eastern spices
+            "za'atar", "zaatar", "sumac", "baharat", "ras el hanout", "harissa", "dukkah",
+            # Asian spices
+            "five spice", "five-spice powder", "szechuan peppercorns", "sichuan peppercorns", "sansho pepper", "sansho", "shichimi togarashi", "togarashi",
+            # Latin American spices
+            "achiote", "annatto", "adobo", "sazon", "sazonador",
+            # Specific ground spices
+            "ground ginger", "ground cinnamon", "ground nutmeg", "ground allspice", "ground cloves", "ground cardamom", "ground coriander", "ground cumin", "ground turmeric", "ground paprika",
+            # Whole spices
+            "whole cloves", "whole cardamom", "whole allspice", "whole nutmeg", "cinnamon sticks", "cinnamon bark", "vanilla beans", "vanilla pods",
+            # Chili powders and peppers
+            "chili powder", "chile powder", "chipotle powder", "ancho chili powder", "guajillo powder", "smoked paprika", "pimenton", "aleppo pepper", "urfa biber",
+            # Specialty blends
+            "herbes de provence", "italian seasoning", "poultry seasoning", "pumpkin pie spice", "apple pie spice", "chai spice", "berbere", "ras el hanout",
+            # Salt blends (spice blends with salt)
+            "seasoned salt", "garlic salt", "onion salt", "celery salt", "lemon pepper", "cajun seasoning", "creole seasoning", "old bay", "old bay seasoning",
+            # Other common spices
+            "garlic powder", "onion powder", "chili flakes", "red chili flakes", "smoked salt", "hickory smoked salt", "liquid smoke",
+            # Additional herbs
+            "dried basil", "dried oregano", "dried thyme", "dried rosemary", "dried sage", "dried parsley", "dried dill", "dried mint", "dried tarragon", "dried marjoram",
+            # Spice pastes (dried/powdered)
+            "curry paste", "harissa paste", "miso paste", "gochujang", "doenjang",
+            # Additional seasonings
+            "msg", "monosodium glutamate", "citric acid", "cream of tartar",
+        ],
+        "pantry": 1095,  # 3 years (dried spices/herbs)
+        "fridge": 1095,
+        "freezer": 1095,
+    },
+    # Fresh herbs (separate from dried)
+    "herbs_fresh": {
+        "keywords": ["fresh basil", "fresh oregano", "fresh thyme", "fresh rosemary", "fresh parsley", "fresh cilantro", "fresh dill", "fresh mint", "fresh chives", "fresh sage"],
+        "pantry": None,
+        "fridge": 7,  # 7 days
+        "freezer": 180,  # 6 months
+    },
+    # Pantry Staples - Long-lasting cooking ingredients (2+ years)
+    "pantry_staples": {
+        "keywords": [
+            # Sugars
+            "sugar", "white sugar", "brown sugar", "powdered sugar", "confectioners sugar", "granulated sugar", "cane sugar", "raw sugar", "turbinado sugar", "demerara sugar",
+            # Salts
+            "salt", "table salt", "sea salt", "kosher salt", "himalayan salt", "rock salt", "iodized salt",
+            # Baking ingredients
+            "baking powder", "baking soda", "cream of tartar", "vanilla extract", "almond extract", "vanilla bean", "cornstarch", "arrowroot", "gelatin", "pudding mix", "cake mix", "brownie mix",
+            # Long-lasting condiments/sauces
+            "soy sauce", "fish sauce", "oyster sauce", "hoisin sauce", "teriyaki sauce", "worcestershire sauce", "tabasco", "sriracha", "chili sauce", "vinegar", "balsamic", "rice vinegar", "apple cider vinegar", "white vinegar", "red wine vinegar",
+            # Sweeteners
+            "honey", "maple syrup", "agave", "molasses", "corn syrup", "golden syrup",
+            # Other long-lasting items
+            "cocoa powder", "unsweetened cocoa", "chocolate chips", "chocolate bar", "coconut flakes", "shredded coconut", "dried coconut",
+        ],
+        "pantry": 1095,  # 3 years (many last indefinitely if stored properly)
+        "fridge": 1095,  # Same in fridge
+        "freezer": 1095,  # Same in freezer
+    },
+    # Frozen foods
+    "frozen": {
+        "keywords": ["frozen", "ice cream", "frozen vegetables", "frozen fruit", "frozen meal", "frozen pizza", "frozen burrito", "frozen waffles", "frozen berries"],
+        "pantry": None,
+        "fridge": None,
+        "freezer": 180,  # 6 months
+    },
+    # Deli & Prepared foods
+    "prepared": {
+        "keywords": ["deli", "prepared", "ready meal", "meal kit", "salad kit", "hummus", "guacamole", "pesto", "tzatziki", "dip"],
+        "pantry": None,
+        "fridge": 5,  # 5 days
+        "freezer": 30,  # 1 month
+    },
+    # Tofu & Plant-based
+    "plant_based": {
+        "keywords": ["tofu", "tempeh", "seitan", "plant based", "vegan", "impossible", "beyond", "meat alternative"],
+        "pantry": None,
+        "fridge": 7,  # 7 days
+        "freezer": 90,  # 3 months
+    },
+    # Baby food
+    "baby_food": {
+        "keywords": ["baby food", "infant formula", "baby formula"],
+        "pantry": 365,  # 1 year (unopened)
+        "fridge": 3,  # 3 days (opened)
+        "freezer": None,
+    },
+    # Kitchen items (non-food)
+    "kitchen_cleaning": {
+        "keywords": ["dish soap", "sponge", "scrubber", "paper towels", "napkins", "trash bags", "garbage bags", "aluminum foil", "plastic wrap", "wax paper", "parchment paper", "ziploc", "sandwich bag"],
+        "pantry": 1095,  # 3 years (indefinite)
+        "fridge": None,
+        "freezer": None,
+    },
+    # Note: Salt and basic spices are now in "pantry_staples" and "spices" categories
 }
 
-def suggest_expiration_date(item_name: str, storage_type: str = "pantry", purchased_date: Optional[date] = None) -> tuple[Optional[date], str, Optional[str]]:
+def get_recommended_storage_type(category: Optional[str]) -> Optional[str]:
     """
-    Suggest expiration date based on item name and storage type.
-    Returns: (suggested_date, confidence, category)
+    Get recommended storage type based on food category.
+    Returns: "pantry", "fridge", or "freezer", or None if unknown
     """
-    item_name_lower = item_name.lower()
+    if not category:
+        return None
+    
+    # Categories that should be refrigerated
+    fridge_categories = [
+        "dairy", "dairy_soft", "dairy_hard",
+        "meat", "meat_ground",
+        "seafood", "seafood_shellfish",
+        "produce_perishable", "produce_leafy", "produce_berries",
+        "eggs",
+        "prepared",
+        "plant_based",
+        "condiments_mayo",
+        "herbs_fresh",
+    ]
+    
+    # Categories that should be in freezer (if frozen)
+    freezer_categories = [
+        "frozen",
+    ]
+    
+    # Categories that should be in pantry
+    pantry_categories = [
+        "produce_long", "produce_root",
+        "bread",
+        "canned",
+        "dry",
+        "packaged",
+        "nuts",
+        "beverages",  # Unopened beverages
+        "condiments",  # Unopened condiments
+        "preserves",  # Unopened preserves
+        "oils",
+        "spices",
+        "pantry_staples",
+        "kitchen_cleaning",
+        "baby_food",  # Unopened baby food
+    ]
+    
+    if category in freezer_categories:
+        return "freezer"
+    elif category in fridge_categories:
+        return "fridge"
+    elif category in pantry_categories:
+        return "pantry"
+    
+    return None  # Unknown category
+
+def suggest_expiration_date(
+    item_name: str, 
+    storage_type: str = "pantry", 
+    purchased_date: Optional[date] = None,
+    usda_food_category: Optional[str] = None,
+    is_opened: bool = False
+) -> tuple[Optional[date], str, Optional[str]]:
+    """
+    Suggest expiration date based on item name, storage type, opened status, and optional USDA category.
+    Returns: (suggested_date, confidence, category, recommended_storage_type)
+    
+    Confidence levels:
+    - "high": Exact keyword match or USDA category match
+    - "medium": Partial keyword match or related category
+    - "low": No match, using default estimate
+    
+    Note: Opened items typically have shorter shelf life. The function applies reduction factors
+    based on category and storage type.
+    """
+    import re
+    
+    item_name_lower = item_name.lower().strip()
     today = purchased_date if purchased_date else date.today()
     
-    # Try to match item name to a category
+    # Clean item name - remove common prefixes/suffixes that don't affect category
+    cleaned_name = re.sub(r'\b(organic|fresh|frozen|dried|raw|cooked|whole|low fat|fat free|reduced fat|light|lite)\b', '', item_name_lower)
+    cleaned_name = re.sub(r'\s+', ' ', cleaned_name).strip()
+    
     matched_category = None
     matched_days = None
+    match_type = None  # "exact", "partial", "usda"
+    best_match_score = 0
     
-    for category, rules in EXPIRATION_RULES.items():
-        for keyword in rules["keywords"]:
-            if keyword in item_name_lower:
-                matched_category = category
-                # Get days based on storage type
-                if storage_type == "freezer" and rules["freezer"] is not None:
-                    matched_days = rules["freezer"]
-                elif storage_type == "fridge" and rules["fridge"] is not None:
-                    matched_days = rules["fridge"]
-                elif storage_type == "pantry" and rules["pantry"] is not None:
-                    matched_days = rules["pantry"]
+    # First, try to match using USDA food category if available
+    if usda_food_category:
+        usda_category_lower = usda_food_category.lower()
+        for category, rules in EXPIRATION_RULES.items():
+            usda_categories = rules.get("usda_categories", [])
+            for usda_cat in usda_categories:
+                if usda_cat.lower() in usda_category_lower or usda_category_lower in usda_cat.lower():
+                    # Get days based on storage type
+                    if storage_type == "freezer" and rules.get("freezer") is not None:
+                        matched_days = rules["freezer"]
+                        matched_category = category
+                        match_type = "usda"
+                        break
+                    elif storage_type == "fridge" and rules.get("fridge") is not None:
+                        matched_days = rules["fridge"]
+                        matched_category = category
+                        match_type = "usda"
+                        break
+                    elif storage_type == "pantry" and rules.get("pantry") is not None:
+                        matched_days = rules["pantry"]
+                        matched_category = category
+                        match_type = "usda"
+                        break
+            if match_type == "usda":
+                break
+    
+    # If no USDA match, try keyword matching with improved logic
+    if matched_days is None:
+        for category, rules in EXPIRATION_RULES.items():
+            for keyword in rules["keywords"]:
+                keyword_lower = keyword.lower()
                 
-                if matched_days is not None:
-                    break
+                # Use word boundaries for better matching (avoid "chicken" matching "chicken soup")
+                # But allow partial matches for compound words
+                pattern = r'\b' + re.escape(keyword_lower) + r'\b'
+                if re.search(pattern, item_name_lower) or re.search(pattern, cleaned_name):
+                    # Exact word match - highest priority
+                    score = 10
+                    match_type_candidate = "exact"
+                elif keyword_lower in item_name_lower or keyword_lower in cleaned_name:
+                    # Partial match - lower priority
+                    score = 5
+                    match_type_candidate = "partial"
+                else:
+                    continue
+                
+                # Only use this match if it's better than previous
+                if score > best_match_score:
+                    best_match_score = score
+                    match_type = match_type_candidate
+                    
+                    # Get days based on storage type
+                    if storage_type == "freezer" and rules.get("freezer") is not None:
+                        matched_days = rules["freezer"]
+                        matched_category = category
+                    elif storage_type == "fridge" and rules.get("fridge") is not None:
+                        matched_days = rules["fridge"]
+                        matched_category = category
+                    elif storage_type == "pantry" and rules.get("pantry") is not None:
+                        matched_days = rules["pantry"]
+                        matched_category = category
+                    
+                    # For exact matches, we can break early
+                    if match_type == "exact" and matched_days is not None:
+                        break
         
+        # If we found a match, check if we should continue for better matches
+        # (e.g., "ground beef" should match "meat_ground" not just "meat")
         if matched_days is not None:
-            break
+            # Re-check for more specific categories (they come later in dict, so check again)
+            for category, rules in EXPIRATION_RULES.items():
+                # Skip if this is the category we already matched
+                if category == matched_category:
+                    continue
+                    
+                for keyword in rules["keywords"]:
+                    keyword_lower = keyword.lower()
+                    pattern = r'\b' + re.escape(keyword_lower) + r'\b'
+                    
+                    if re.search(pattern, item_name_lower) or re.search(pattern, cleaned_name):
+                        # More specific match found
+                        if storage_type == "freezer" and rules.get("freezer") is not None:
+                            matched_days = rules["freezer"]
+                            matched_category = category
+                            match_type = "exact"
+                            break
+                        elif storage_type == "fridge" and rules.get("fridge") is not None:
+                            matched_days = rules["fridge"]
+                            matched_category = category
+                            match_type = "exact"
+                            break
+                        elif storage_type == "pantry" and rules.get("pantry") is not None:
+                            matched_days = rules["pantry"]
+                            matched_category = category
+                            match_type = "exact"
+                            break
+                if match_type == "exact" and matched_category != category:
+                    break
     
     # Determine confidence level
     if matched_days is not None:
-        # High confidence if we found a match
-        confidence = "high"
+        if match_type == "usda" or match_type == "exact":
+            confidence = "high"
+        elif match_type == "partial":
+            confidence = "medium"
+        else:
+            confidence = "medium"
+        
+        # Apply opened status adjustment
+        if is_opened and matched_days is not None:
+            # Categories that already have different rules for opened vs unopened items
+            # These categories use different storage_type values for opened items
+            categories_with_opened_rules = ["beverages", "condiments", "preserves", "baby_food"]
+            
+            # For categories with explicit opened rules, check if we need to adjust
+            # Beverages: pantry (unopened) = 180, fridge (opened) = 7
+            # Condiments: pantry (unopened) = 180, fridge (opened) = 90
+            # Preserves: pantry (unopened) = 365, fridge (opened) = 180
+            # Baby food: pantry (unopened) = 365, fridge (opened) = 3
+            
+            if matched_category in categories_with_opened_rules:
+                # These categories have different values based on storage_type
+                # If item is opened and in pantry, we should use fridge value instead
+                if storage_type == "pantry" and matched_category == "beverages":
+                    matched_days = 7  # Opened beverages in pantry should be refrigerated
+                elif storage_type == "pantry" and matched_category == "condiments":
+                    matched_days = 90  # Opened condiments should be refrigerated
+                elif storage_type == "pantry" and matched_category == "preserves":
+                    matched_days = 180  # Opened preserves should be refrigerated
+                elif storage_type == "pantry" and matched_category == "baby_food":
+                    matched_days = 3  # Opened baby food should be refrigerated
+                # If already in fridge, the value is already correct
+            elif matched_category in ["pantry_staples", "spices", "oils", "dry", "canned"]:
+                # These items don't change much when opened (or are already long-lasting)
+                # Apply minimal reduction (5-10%)
+                matched_days = int(matched_days * 0.95)
+            elif matched_category in ["dairy", "meat", "seafood", "produce_perishable", "produce_leafy", "produce_berries"]:
+                # Perishable items: opened items spoil faster (reduce by 25-30%)
+                matched_days = int(matched_days * 0.7)
+            else:
+                # General rule: opened items last 60-70% as long
+                matched_days = int(matched_days * 0.65)
+        
         suggested_date = today + timedelta(days=matched_days)
-        return suggested_date, confidence, matched_category
+        recommended_storage = get_recommended_storage_type(matched_category)
+        return suggested_date, confidence, matched_category, recommended_storage
     else:
-        # Low confidence - no match found, use default
+        # Low confidence - no match found
         confidence = "low"
         # Default: 7 days for unknown items (conservative estimate)
-        suggested_date = today + timedelta(days=7)
-        return suggested_date, confidence, None
+        # But try to be smarter based on storage type
+        if storage_type == "freezer":
+            default_days = 90  # 3 months for frozen unknown items
+        elif storage_type == "fridge":
+            default_days = 7  # 1 week for refrigerated unknown items
+        else:
+            default_days = 7  # 1 week for pantry unknown items
+        
+        suggested_date = today + timedelta(days=default_days)
+        return suggested_date, confidence, None, None
 
 @app.post("/api/items/suggest-expiration", response_model=ExpirationSuggestionResponse)
-def suggest_expiration(request: ExpirationSuggestionRequest):
+async def suggest_expiration(request: ExpirationSuggestionRequest):
     """
-    Suggest an expiration date for an item based on its name and storage type.
+    Suggest an expiration date for an item based on its name, storage type, and optional USDA data.
     """
     try:
         storage = request.storage_type or "pantry"
-        suggested_date, confidence, category = suggest_expiration_date(
+        
+        # If USDA FDC ID is provided, try to get food category
+        usda_category = request.usda_food_category
+        if request.usda_fdc_id and not usda_category and USDA_API_KEY:
+            try:
+                # Fetch food category from USDA API
+                url = f"https://api.nal.usda.gov/fdc/v1/food/{request.usda_fdc_id}?api_key={USDA_API_KEY}"
+                async with httpx.AsyncClient() as client:
+                    response = await client.get(url)
+                    usda_data = response.json()
+                    # Extract food category if available
+                    food_category = usda_data.get("foodCategory", {})
+                    if food_category:
+                        usda_category = food_category.get("description", "")
+            except Exception as e:
+                logger.debug(f"Could not fetch USDA category for fdcId {request.usda_fdc_id}: {str(e)}")
+        
+        suggested_date, confidence, category, recommended_storage = suggest_expiration_date(
             request.name,
             storage,
-            request.purchased_date
+            request.purchased_date,
+            usda_category,
+            request.is_opened or False
         )
         
         days_from_now = (suggested_date - date.today()).days if suggested_date else None
@@ -827,7 +1321,8 @@ def suggest_expiration(request: ExpirationSuggestionRequest):
             "suggested_date": suggested_date.isoformat() if suggested_date else None,
             "days_from_now": days_from_now,
             "confidence": confidence,
-            "category": category
+            "category": category,
+            "recommended_storage_type": recommended_storage
         }
     except Exception as e:
         logger.error(f"Error suggesting expiration date: {str(e)}")
