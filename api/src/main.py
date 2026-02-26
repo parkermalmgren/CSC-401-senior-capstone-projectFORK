@@ -1868,62 +1868,73 @@ async def get_recipes_by_ingredients(
 
 @app.post("/api/receipt/scan")
 async def scan_receipt(
-    file: UploadFile = File(...),
-    user_id: Optional[str] = Depends(get_user_id)
+        file: UploadFile = File(...),
+        user_id: Optional[str] = Depends(get_user_id)
 ):
     """Scan receipt image using OpenAI Vision API"""
     if not user_id:
         raise HTTPException(status_code=401, detail="Authentication required")
-    
+
     if not openai_client:
         raise HTTPException(status_code=500, detail="OpenAI API not configured")
-    
+
     try:
         # Read the uploaded image as bytes
         image_data = await file.read()
-        
+
         # Convert bytes to base64
         base64_image = base64.b64encode(image_data).decode('utf-8')
-        
+
         logger.info(f"Receipt image received: size: {len(image_data)} bytes")
-        
+
         # Call OpenAI Vision API with improved prompt
         response = openai_client.chat.completions.create(
             model="gpt-4o",
             messages=[
                 {
+                    "role": "system",
+                    "content": "You are an expert at reading grocery receipts. Extract ONLY food and beverage items. Be precise."
+                },
+                {
                     "role": "user",
                     "content": [
                         {
                             "type": "text",
-                            "text": """Extract ONLY food and beverage items from this grocery receipt.
+                            "text": """Read this receipt and extract food/beverage items.
 
-Rules:
-- Ignore prices, dates, store info, and non-food items
-- Expand common abbreviations: QTRS=quarters, LT=light, CRM=cream, ENG=english, UNC=uncured
-- Remove brand names, keep only the food type
-- Use proper capitalization
-- If quantity is unclear, use 1
+RULES:
+1. ONLY food/drinks - NO bags, cleaning supplies, etc.
+2. Remove ALL brand names (Kraft, Dole, etc.)
+3. Expand abbreviations: QTR→Quarter, LT→Light, OZ→Ounce
+4. Use proper case: "Milk" not "MILK"
+5. If quantity unclear, use 1
+6. Combine duplicates
 
-Return ONLY a JSON array:
-[{\"name\": \"Butter\", \"quantity\": 2}, {\"name\": \"Milk\", \"quantity\": 1}]"""
+EXAMPLES:
+"KRAFT CHEDDAR 8OZ" → {"name": "Cheddar Cheese", "quantity": 1}
+"BANANAS 2LB" → {"name": "Bananas", "quantity": 2}
+
+Return ONLY JSON array:
+[{\"name\": \"Butter\", \"quantity\": 2}]"""
                         },
                         {
                             "type": "image_url",
                             "image_url": {
-                                "url": f"data:image/jpeg;base64,{base64_image}"
+                                "url": f"data:image/jpeg;base64,{base64_image}",
+                                "detail": "high"
                             }
                         }
                     ]
                 }
             ],
-            max_tokens=500
+            max_tokens=1000,
+            temperature=0.1
         )
-        
+
         # Extract items from response
         content = response.choices[0].message.content
         logger.info(f"GPT-4 raw response: {content}")
-        
+
         # Extract JSON from response (GPT sometimes adds extra text)
         json_match = re.search(r'\[.*\]', content, re.DOTALL)
         if json_match:
@@ -1931,7 +1942,7 @@ Return ONLY a JSON array:
         else:
             logger.error(f"No JSON array found in response: {content}")
             raise ValueError("Could not find JSON array in response")
-        
+
         items = json.loads(content)
 
         # Insert items into database
@@ -1953,7 +1964,7 @@ Return ONLY a JSON array:
                     search_name = search_name.replace('eng', 'english').replace('unc', 'uncured')
                     # Remove extra spaces
                     search_name = ' '.join(search_name.split())
-                    
+
                     usda_url = f"https://api.nal.usda.gov/fdc/v1/foods/search?query={search_name}&pageSize=1&api_key={USDA_API_KEY}"
                     async with httpx.AsyncClient() as client:
                         usda_response = await client.get(usda_url)

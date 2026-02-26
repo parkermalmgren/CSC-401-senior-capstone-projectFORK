@@ -157,22 +157,6 @@ ALLOWED_ORIGINS=http://localhost:3000
 ```bash
 # API Base URL
 NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
-```
-
-### Step 3: Start Services with Docker Compose
-
-```bash
-# Build and start all services
-docker-compose up --build
-
-# Or run in detached mode (background)
-docker-compose up -d --build
-```
-
-This will start:
-- **Database**: PostgreSQL (if needed for local development)
-- **Backend API**: Available at http://localhost:8000
-- **Frontend**: Available at http://localhost:3000
 
 ### Step 4: Verify Everything is Running
 
