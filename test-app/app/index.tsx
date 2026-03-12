@@ -41,7 +41,7 @@ export default function Index() {
   return (
     <View style={styles.container}>
       <WebView 
-        source={{ uri: 'http://localhost:3000/login' }}
+        source={{ uri: 'https://smart-pantry-psi.vercel.app/login' }}
         style={styles.webview}
         startInLoadingState={true}
         javaScriptEnabled={true}

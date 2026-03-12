@@ -72,46 +72,13 @@ export default function ScanReceiptPage() {
   const startCamera = async () => {
     try {
       // Check if MediaDevices API is available
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        // Try legacy API
-        const getUserMedia = navigator.getUserMedia || 
-          (navigator as any).webkitGetUserMedia || 
-          (navigator as any).mozGetUserMedia;
-        
-        if (!getUserMedia) {
-          throw new Error('Camera API not supported in this browser. Please use a modern browser or access via HTTPS.');
-        }
-        
-        // Use legacy API
-        getUserMedia.call(
-          navigator,
-          { video: { facingMode: 'environment' } },
-          (stream: MediaStream) => {
-            if (videoRef.current) {
-              videoRef.current.srcObject = stream;
-              streamRef.current = stream;
-              setIsCameraActive(true);
-            }
-          },
-          (error: any) => {
-            console.error('Error accessing camera:', error);
-            if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
-              setUploadStatus('Camera permission denied. Please allow camera access in your browser settings.');
-            } else if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
-              setUploadStatus('No camera found on this device.');
-            } else if (error.name === 'NotReadableError' || error.name === 'TrackStartError') {
-              setUploadStatus('Camera is already in use by another application.');
-            } else {
-              setUploadStatus('Unable to access camera. Please ensure you are using HTTPS or localhost.');
-            }
-          }
-        );
-        return;
+      if (!navigator.mediaDevices?.getUserMedia) {
+        throw new Error('Camera access is not supported in this browser. Please use a modern browser or access via HTTPS.');
       }
       
-      // Use modern API
+      // Use modern API with rear camera
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment' } // Use back camera on mobile
+        video: { facingMode: { ideal: 'environment' } } // Use back camera on mobile
       });
       
       if (videoRef.current) {
