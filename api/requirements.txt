@@ -8,3 +8,4 @@ openai
 python-multipart
 apscheduler
 twilio
+PyJWT

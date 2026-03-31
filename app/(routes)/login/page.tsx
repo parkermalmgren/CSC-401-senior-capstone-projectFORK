@@ -4,13 +4,8 @@ import { useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import BasketIcon from "@/components/BasketIcon";
-import { API_BASE_URL } from "@/lib/config";
+import { setAuthToken } from "@/lib/api";
 
-// Log API URL on component mount for debugging
-if (typeof window !== "undefined") {
-  console.log("API_BASE_URL:", API_BASE_URL);
-  console.log("Current origin:", window.location.origin);
-}
 
 export default function LoginPage() {
   const router = useRouter();
@@ -38,14 +33,13 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      console.log("Attempting to connect to:", `${API_BASE_URL}/auth/login`);
-      const res = await fetch(`${API_BASE_URL}/auth/login`, {
+      // Call the Next.js API route which sets an HttpOnly session cookie
+      const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password: pw }),
-        mode: "cors", // Explicitly set CORS mode
       });
-      
+
       if (!res.ok) {
         let errorMessage = "Login failed";
         try {
@@ -60,19 +54,21 @@ export default function LoginPage() {
         }
         throw new Error(errorMessage);
       }
-      
+
       const data = await res.json();
-      document.cookie = `sp_session=${data.token}; Max-Age=${60 * 60 * 24 * 30}; Path=/`;
+      // Keep the JWT in memory so API calls work without re-fetching the cookie
+      setAuthToken(data.token);
+      window.dispatchEvent(new Event("auth-change"));
       router.replace("/dashboard");
     } catch (error) {
       let errorMessage = "Login failed. Please try again.";
-      
+
       if (error instanceof TypeError && error.message === "Failed to fetch") {
-        errorMessage = `Cannot connect to server at ${API_BASE_URL}. Please make sure the backend is running.`;
+        errorMessage = "Cannot connect to server. Please make sure the backend is running.";
       } else if (error instanceof Error) {
         errorMessage = error.message;
       }
-      
+
       console.error("Login error:", error);
       setErr(errorMessage);
     } finally {

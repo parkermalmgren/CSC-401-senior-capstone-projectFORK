@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { getProfile, updateProfile, changePassword, getProfileStats, getNotificationPreferences, updateNotificationPreferences, deleteNotificationPreferences, sendExpirationReminder, type Profile, type ProfileStats } from "@/lib/api";
+import { getProfile, updateProfile, changePassword, getProfileStats, getNotificationPreferences, updateNotificationPreferences, deleteNotificationPreferences, sendExpirationReminder, getAuthToken, clearAuthToken, type Profile, type ProfileStats } from "@/lib/api";
 
 export default function AccountSettings() {
   const router = useRouter();
@@ -76,7 +76,7 @@ export default function AccountSettings() {
   
   const loadHouseholds = async () => {
     try {
-      const token = document.cookie.split('; ').find(row => row.startsWith('sp_session='))?.split('=')[1];
+      const token = await getAuthToken();
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000'}/api/households`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -96,7 +96,7 @@ export default function AccountSettings() {
     setSuccess(null);
     
     try {
-      const token = document.cookie.split('; ').find(row => row.startsWith('sp_session='))?.split('=')[1];
+      const token = await getAuthToken();
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000'}/api/households/join`, {
         method: 'POST',
         headers: {
@@ -124,7 +124,7 @@ export default function AccountSettings() {
   
   const loadHouseholdMembers = async (householdId: string) => {
     try {
-      const token = document.cookie.split('; ').find(row => row.startsWith('sp_session='))?.split('=')[1];
+      const token = await getAuthToken();
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000'}/api/households/${householdId}/members`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
@@ -141,7 +141,7 @@ export default function AccountSettings() {
     if (!editingHouseholdName.trim()) return;
     
     try {
-      const token = document.cookie.split('; ').find(row => row.startsWith('sp_session='))?.split('=')[1];
+      const token = await getAuthToken();
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000'}/api/households/${householdId}?name=${encodeURIComponent(editingHouseholdName)}`, {
         method: 'PUT',
         headers: { 'Authorization': `Bearer ${token}` }
@@ -269,8 +269,9 @@ export default function AccountSettings() {
     }
   };
 
-  const handleLogout = () => {
-    document.cookie = "sp_session=; Max-Age=0; Path=/";
+  const handleLogout = async () => {
+    clearAuthToken();
+    await fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
     window.dispatchEvent(new Event("auth-change"));
     router.replace("/");
   };

@@ -6,7 +6,7 @@ import Image from "next/image";
 import type { Route } from "next";
 import { useMemo, useState, useEffect } from "react";
 import { type PantryItem } from "@/data/pantry-items";
-import { getItems, getItem, backendItemToFrontend, updateItem, deleteItem, getWasteSaved, type BackendItem } from "@/lib/api";
+import { getItems, getItem, backendItemToFrontend, updateItem, deleteItem, getWasteSaved, getAuthToken, type BackendItem } from "@/lib/api";
 import { useOptimisticItems } from "@/lib/hooks/useOptimisticItems";
 import AddItemModal from "./AddItemModal";
 import EditItemModal from "./EditItemModal";
@@ -42,7 +42,7 @@ export default function DashboardHome() {
   // Fetch households
   const fetchHouseholds = async () => {
     try {
-      const token = document.cookie.split('; ').find(row => row.startsWith('sp_session='))?.split('=')[1];
+      const token = await getAuthToken();
       const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000'}/api/households`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });

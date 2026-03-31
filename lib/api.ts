@@ -33,37 +33,50 @@ export interface UpdateItemRequest {
   is_opened?: boolean;
 }
 
-// Helper to get user ID from session cookie
-function getUserId(): string | null {
-  if (typeof document === "undefined") return null;
-  
-  const cookies = document.cookie.split("; ");
-  const sessionCookie = cookies.find((c) => c.startsWith("sp_session="));
-  
-  if (!sessionCookie) return null;
-  
-  const token = sessionCookie.split("=")[1];
-  
-  // Handle old format: "user_{id}" or new format: UUID
-  if (token.startsWith("user_")) {
-    return token.replace("user_", "");
-  }
-  
-  return token;
+// In-memory token storage — survives navigation but not page refresh.
+// On refresh, getAuthToken() re-hydrates from the HttpOnly cookie via /api/auth/token.
+let _authToken: string | null = null;
+
+/** Store the JWT in memory after login/signup. */
+export function setAuthToken(token: string): void {
+  _authToken = token;
 }
 
-// Helper to get auth header
-function getAuthHeader(): string | null {
-  const userId = getUserId();
-  if (!userId) return null;
-  return `Bearer ${userId}`;
+/** Clear the in-memory token on logout. */
+export function clearAuthToken(): void {
+  _authToken = null;
+}
+
+/**
+ * Return the current JWT.
+ * Uses the in-memory value when available; otherwise asks the Next.js
+ * /api/auth/token route to read the HttpOnly cookie server-side.
+ */
+export async function getAuthToken(): Promise<string | null> {
+  if (_authToken) return _authToken;
+
+  // Re-hydrate from the HttpOnly cookie (requires a same-origin server round-trip)
+  try {
+    const res = await fetch("/api/auth/token", { method: "GET" });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.token) {
+        _authToken = data.token;
+        return _authToken;
+      }
+    }
+  } catch {
+    // Not authenticated or network error
+  }
+  return null;
 }
 
 // Helper to handle authentication errors and redirect if needed
-function handleAuthError(status: number): void {
+async function handleAuthError(status: number): Promise<void> {
   if (status === 401) {
-    // Clear session cookie
-    document.cookie = "sp_session=; Max-Age=0; Path=/";
+    clearAuthToken();
+    // Ask the server to clear the HttpOnly cookie
+    await fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
     // Dispatch auth change event
     window.dispatchEvent(new Event("auth-change"));
     // Redirect to login after a brief delay to allow UI to update
@@ -80,8 +93,8 @@ async function authenticatedFetch(
   url: string,
   options: RequestInit = {}
 ): Promise<Response> {
-  const authHeader = getAuthHeader();
-  if (!authHeader) {
+  const token = await getAuthToken();
+  if (!token) {
     throw new Error("Not authenticated");
   }
 
@@ -89,14 +102,14 @@ async function authenticatedFetch(
     ...options,
     headers: {
       "Content-Type": "application/json",
-      Authorization: authHeader,
+      Authorization: `Bearer ${token}`,
       ...options.headers,
     },
   });
 
   // Handle authentication errors globally
   if (response.status === 401) {
-    handleAuthError(401);
+    await handleAuthError(401);
     throw new Error("Authentication required. Please log in again.");
   }
   

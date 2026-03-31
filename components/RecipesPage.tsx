@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import { useState, useEffect, useMemo } from "react";
-import { getItems } from "@/lib/api";
+import { getItems, getAuthToken } from "@/lib/api";
 import {
   getRecipesByIngredients,
   type RecipeByIngredients,
@@ -32,11 +32,7 @@ export default function RecipesPage() {
 
   const fetchHouseholds = async () => {
     try {
-      const token =
-        document.cookie
-          .split("; ")
-          .find((row) => row.startsWith("sp_session="))
-          ?.split("=")[1] ?? "";
+      const token = (await getAuthToken()) ?? "";
       const base = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
       const res = await fetch(`${base}/api/households`, {
         headers: { Authorization: `Bearer ${token}` },

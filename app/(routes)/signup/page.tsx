@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import BasketIcon from "@/components/BasketIcon";
-import { API_BASE_URL } from "@/lib/config";
+import { setAuthToken } from "@/lib/api";
 
 export default function SignupPage() {
   const router = useRouter();
@@ -48,12 +48,13 @@ export default function SignupPage() {
     }
 
     try {
-      const res = await fetch(`${API_BASE_URL}/auth/signup`, {
+      // Call the Next.js API route which sets an HttpOnly session cookie
+      const res = await fetch("/api/auth/signup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: `${firstName} ${lastName}`, email, password: pw }),
       });
-      
+
       if (!res.ok) {
         let errorMessage = "Sign up failed";
         try {
@@ -66,9 +67,11 @@ export default function SignupPage() {
         }
         throw new Error(errorMessage);
       }
-      
+
       const data = await res.json();
-      document.cookie = `sp_session=${data.token}; Max-Age=${60 * 60 * 24 * 30}; Path=/`;
+      // Keep the JWT in memory so API calls work without re-fetching the cookie
+      setAuthToken(data.token);
+      window.dispatchEvent(new Event("auth-change"));
       router.replace("/dashboard");
     } catch (error) {
       setErr(error instanceof Error ? error.message : "Sign up failed. Please try again.");

@@ -6,6 +6,7 @@ import re
 import time
 import httpx
 import uuid
+import jwt as pyjwt
 from datetime import date, datetime, timedelta
 from uuid import UUID
 from pathlib import Path
@@ -31,6 +32,7 @@ except ImportError:
 # Get Supabase configuration from environment
 SUPABASE_URL = os.getenv("SUPABASE_URL") or os.getenv("NEXT_PUBLIC_SUPABASE_URL")
 SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+SUPABASE_JWT_SECRET = os.getenv("SUPABASE_JWT_SECRET")
 USDA_API_KEY = os.getenv("USDA_API_KEY")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 SPOONACULAR_API_KEY = os.getenv("SPOONACULAR_API_KEY")
@@ -50,6 +52,11 @@ openai_client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
 
 # In-memory store for scan sessions (in production, use Redis or database)
 scan_sessions: Dict[str, Dict] = {}
+
+# Simple in-memory token validation cache to reduce Supabase API calls
+# Format: token -> (user_id, expiry_timestamp)
+_token_cache: Dict[str, Tuple[str, float]] = {}
+_TOKEN_CACHE_TTL = 300  # 5 minutes
 
 # Configure logging
 logging.basicConfig(
@@ -307,22 +314,55 @@ async def log_requests(request: Request, call_next):
         )
         raise
 
-# Dependency to get user_id from Authorization header (temporary - will use Firebase later)
+# Dependency to validate Bearer JWT and extract user_id
 def get_user_id(authorization: Optional[str] = Header(None)) -> Optional[str]:
     """
-    Temporary function to extract user_id from header.
-    TODO: Replace with Firebase Auth token verification
+    Validate a Supabase JWT from the Authorization header and return the user's ID.
+
+    Fast path: if SUPABASE_JWT_SECRET is configured, verify locally with PyJWT.
+    Fallback: validate via Supabase API with a short-lived in-memory cache.
     """
     if not authorization:
         return None
-    # For now, expect format: "Bearer user_id"
     try:
         parts = authorization.split()
-        if len(parts) == 2 and parts[0] == "Bearer":
-            return parts[1]
-    except:
-        pass
-    return None
+        if len(parts) != 2 or parts[0] != "Bearer":
+            return None
+        token = parts[1]
+
+        # Fast path: local JWT verification (no network call)
+        if SUPABASE_JWT_SECRET:
+            try:
+                payload = pyjwt.decode(
+                    token,
+                    SUPABASE_JWT_SECRET,
+                    algorithms=["HS256"],
+                    audience="authenticated",
+                )
+                return payload.get("sub")
+            except pyjwt.InvalidTokenError:
+                return None
+
+        # Fallback: validate via Supabase API with cache
+        now = time.time()
+        if token in _token_cache:
+            cached_user_id, expiry = _token_cache[token]
+            if now < expiry:
+                return cached_user_id
+            del _token_cache[token]
+
+        try:
+            user_response = supabase.auth.get_user(token)
+            if user_response and user_response.user:
+                user_id = str(user_response.user.id)
+                _token_cache[token] = (user_id, now + _TOKEN_CACHE_TTL)
+                return user_id
+        except Exception:
+            pass
+
+        return None
+    except Exception:
+        return None
 
 # Scheduler for daily expiration reminders (one instance per process)
 _expiration_scheduler = None
@@ -474,11 +514,21 @@ def signup(req: SignupRequest, request: Request):
         except Exception as e:
             logger.warning(f"Profile creation warning (expected): {str(e)}")
         
-        # Return token (using user_id as token for now)
+        # Sign in to obtain a proper JWT for the newly created user
+        access_token = user_id  # fallback if sign-in fails
+        try:
+            login_response = supabase.auth.sign_in_with_password({
+                "email": req.email,
+                "password": req.password
+            })
+            if login_response.session:
+                access_token = login_response.session.access_token
+        except Exception as sign_in_err:
+            logger.warning(f"Could not obtain JWT for new user {user_id}: {sign_in_err}")
+
         logger.info(f"Signup successful for user: {user_id} ({req.email})")
         return {
-
-            "token": user_id,
+            "token": access_token,
             "user": {
                 "id": user_id,
                 "name": req.name,
@@ -494,7 +544,7 @@ def signup(req: SignupRequest, request: Request):
         print(f"ERROR TYPE: {type(e).__name__}")
         if "already registered" in error_msg.lower() or "user already exists" in error_msg.lower():
             raise HTTPException(status_code=400, detail="User already exists")
-        raise HTTPException(status_code=500, detail=f"Signup failed: {error_msg}")
+        raise HTTPException(status_code=500, detail="Sign up failed. Please try again.")
 
 @app.post("/auth/login")
 @limiter.limit("5/minute")  # 5 login attempts per minute per IP (prevents brute force)
@@ -517,10 +567,11 @@ def login(req: LoginRequest, request: Request):
         profile_response = supabase.table("profiles").select("*").eq("id", user_id).execute()
         profile = profile_response.data[0] if profile_response.data else None
 
-        # Return token (using user_id as token for now)
+        # Return the Supabase JWT (access_token) instead of the raw user_id
+        access_token = auth_response.session.access_token if auth_response.session else user_id
         logger.info(f"Login successful for user: {user_id} ({req.email})")
         return {
-            "token": user_id,
+            "token": access_token,
             "user": {
                 "id": user_id,
                 "name": profile.get("name") if profile else req.email,
@@ -536,7 +587,7 @@ def login(req: LoginRequest, request: Request):
             raise HTTPException(status_code=401, detail="Email not confirmed. Please check your email and click the confirmation link.")
         if "invalid" in error_msg.lower() or "credentials" in error_msg.lower():
             raise HTTPException(status_code=401, detail="Invalid email or password")
-        raise HTTPException(status_code=500, detail=f"Login failed: {error_msg}")
+        raise HTTPException(status_code=500, detail="Authentication failed. Please try again.")
 
 
 # Items endpoints
@@ -632,7 +683,7 @@ def list_items(
         }
     except Exception as e:
         logger.error(f"Error fetching items for user {user_id}: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+        raise HTTPException(status_code=500, detail="An internal error occurred. Please try again.")
 
 @app.get("/api/items/{item_id}", response_model=ItemResponse)
 @limiter.limit("100/minute")
@@ -649,7 +700,8 @@ def get_item(item_id: str, request: Request, user_id: Optional[str] = Depends(ge
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+        logger.error(f"Error fetching item {item_id} for user {user_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail="An internal error occurred. Please try again.")
 
 @app.post("/api/items", response_model=ItemResponse, status_code=201)
 @limiter.limit("60/minute")  # 60 create requests per minute
@@ -686,7 +738,7 @@ def create_item(item_data: ItemCreate, request: Request, user_id: Optional[str] 
         return response.data[0]
     except Exception as e:
         logger.error(f"Error creating item for user {user_id}: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+        raise HTTPException(status_code=500, detail="An internal error occurred. Please try again.")
 
 @app.put("/api/items/{item_id}", response_model=ItemResponse)
 @limiter.limit("60/minute")
@@ -706,7 +758,7 @@ def update_item(item_id: str, item_data: ItemUpdate, request: Request, user_id: 
         raise
     except Exception as e:
         logger.error(f"Error checking item {item_id} for user {user_id}: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+        raise HTTPException(status_code=500, detail="An internal error occurred. Please try again.")
     
     # Build update data
     update_data = {}
@@ -739,7 +791,7 @@ def update_item(item_id: str, item_data: ItemUpdate, request: Request, user_id: 
         return response.data[0]
     except Exception as e:
         logger.error(f"Error updating item {item_id} for user {user_id}: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+        raise HTTPException(status_code=500, detail="An internal error occurred. Please try again.")
 
 @app.delete("/api/items/{item_id}", status_code=204)
 @limiter.limit("60/minute")
@@ -798,7 +850,7 @@ def delete_item(item_id: str, request: Request, user_id: Optional[str] = Depends
         raise
     except Exception as e:
         logger.error(f"Error deleting item {item_id} for user {user_id}: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+        raise HTTPException(status_code=500, detail="An internal error occurred. Please try again.")
 
 
 class WasteSavedResponse(BaseModel):
@@ -860,7 +912,7 @@ def get_waste_saved(
         }
     except Exception as e:
         logger.error(f"Error calculating waste saved for user {user_id}: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Error calculating waste saved: {str(e)}")
+        raise HTTPException(status_code=500, detail="An internal error occurred. Please try again.")
 
 @app.get("/api/items/expiring/soon", response_model=PaginatedItemsResponse)
 @limiter.limit("100/minute")
@@ -904,7 +956,7 @@ def get_expiring_items(
         }
     except Exception as e:
         logger.error(f"Error fetching expiring items for user {user_id}: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+        raise HTTPException(status_code=500, detail="An internal error occurred. Please try again.")
 
 # Expiration suggestion rules (in days from purchase/current date)
 # Based on common food shelf life guidelines from USDA, FDA, and food safety organizations
@@ -1601,7 +1653,7 @@ async def suggest_expiration(request_data: ExpirationSuggestionRequest, request:
         }
     except Exception as e:
         logger.error(f"Error suggesting expiration date: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Error suggesting expiration: {str(e)}")
+        raise HTTPException(status_code=500, detail="An internal error occurred. Please try again.")
 
 # Profile/Account endpoints
 @app.get("/api/profile", response_model=ProfileResponse)
@@ -1621,7 +1673,7 @@ def get_profile(request: Request, user_id: Optional[str] = Depends(get_user_id))
         raise
     except Exception as e:
         logger.error(f"Error fetching profile for user {user_id}: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+        raise HTTPException(status_code=500, detail="An internal error occurred. Please try again.")
 
 @app.put("/api/profile", response_model=ProfileResponse)
 @limiter.limit("30/minute")
@@ -1661,7 +1713,7 @@ def update_profile(profile_data: ProfileUpdate, request: Request, user_id: Optio
         return response.data[0]
     except Exception as e:
         logger.error(f"Error updating profile for user {user_id}: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+        raise HTTPException(status_code=500, detail="An internal error occurred. Please try again.")
 
 @app.post("/api/profile/change-password")
 @limiter.limit("5/minute")  # Password changes should be rate limited
@@ -1752,7 +1804,7 @@ def change_password(password_data: PasswordChangeRequest, request: Request, user
             
             raise HTTPException(
                 status_code=500,
-                detail=f"Failed to change password: {str(e)}"
+                detail="Failed to change password. Please try again."
             )
         
         logger.info(f"Password changed successfully for user {user_id}")
@@ -1767,7 +1819,7 @@ def change_password(password_data: PasswordChangeRequest, request: Request, user
                 status_code=403,
                 detail="Password change is currently unavailable. Please use the 'Forgot Password' feature or contact support."
             )
-        raise HTTPException(status_code=500, detail=f"Failed to change password: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to change password. Please try again.")
 
 
 # Expiration notification preferences (Notify me when items are close to expire)
@@ -2037,7 +2089,7 @@ def get_profile_stats(user_id: Optional[str] = Depends(get_user_id)):
         }
     except Exception as e:
         logger.error(f"Error fetching stats for user {user_id}: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+        raise HTTPException(status_code=500, detail="An internal error occurred. Please try again.")
 
 
 # USDA Food API endpoints
@@ -2058,7 +2110,7 @@ async def search_food(query: str):
             return foods
     except Exception as e:
         logger.error(f"Error searching USDA API: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"USDA API error: {str(e)}")
+        raise HTTPException(status_code=500, detail="An internal error occurred. Please try again.")
 
 
 # -----------------------------------------------------------------------------
@@ -2188,7 +2240,7 @@ async def create_item_from_usda(
         return result.data[0]
     except Exception as e:
         logger.error(f"Error creating item from USDA for user {user_id}: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+        raise HTTPException(status_code=500, detail="An internal error occurred. Please try again.")
 
 
 # Spoonacular recipe API (proxy to keep API key server-side)
@@ -2306,7 +2358,7 @@ async def get_recipes_by_ingredients(
         raise HTTPException(status_code=502, detail="Recipe service error")
     except Exception as e:
         logger.error(f"Error fetching recipes: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Error fetching recipes: {str(e)}")
+        raise HTTPException(status_code=500, detail="An internal error occurred. Please try again.")
 
 
 @app.post("/api/receipt/scan")
@@ -2326,6 +2378,20 @@ async def scan_receipt(
     try:
         # Read the uploaded image as bytes
         image_data = await file.read()
+
+        # Validate file size (10 MB max)
+        MAX_FILE_SIZE = 10 * 1024 * 1024
+        if len(image_data) > MAX_FILE_SIZE:
+            raise HTTPException(status_code=413, detail="File too large. Maximum size is 10 MB.")
+
+        # Validate file type via magic bytes (JPEG, PNG, WebP only)
+        is_valid_image = (
+            image_data[:3] == b'\xff\xd8\xff' or                          # JPEG
+            image_data[:8] == b'\x89PNG\r\n\x1a\n' or                    # PNG
+            (image_data[:4] == b'RIFF' and image_data[8:12] == b'WEBP')  # WebP
+        )
+        if not is_valid_image:
+            raise HTTPException(status_code=400, detail="Invalid file type. Only JPEG, PNG, and WebP images are accepted.")
 
         # Convert bytes to base64
         base64_image = base64.b64encode(image_data).decode('utf-8')
@@ -2526,7 +2592,7 @@ Return ONLY JSON array:
                 detail="OpenAI API authentication failed. Please check your API key configuration."
             )
         else:
-            raise HTTPException(status_code=500, detail=f"Error scanning receipt: {error_msg}")
+            raise HTTPException(status_code=500, detail="Failed to process receipt. Please try again.")
 
 @app.post("/api/receipt/create-session")
 @limiter.limit("30/minute")  # Limit session creation
@@ -2576,10 +2642,24 @@ async def scan_receipt_mobile(
     try:
         # Read the uploaded image as bytes
         image_data = await file.read()
-        
+
+        # Validate file size (10 MB max)
+        MAX_FILE_SIZE = 10 * 1024 * 1024
+        if len(image_data) > MAX_FILE_SIZE:
+            raise HTTPException(status_code=413, detail="File too large. Maximum size is 10 MB.")
+
+        # Validate file type via magic bytes (JPEG, PNG, WebP only)
+        is_valid_image = (
+            image_data[:3] == b'\xff\xd8\xff' or                          # JPEG
+            image_data[:8] == b'\x89PNG\r\n\x1a\n' or                    # PNG
+            (image_data[:4] == b'RIFF' and image_data[8:12] == b'WEBP')  # WebP
+        )
+        if not is_valid_image:
+            raise HTTPException(status_code=400, detail="Invalid file type. Only JPEG, PNG, and WebP images are accepted.")
+
         # Convert bytes to base64
         base64_image = base64.b64encode(image_data).decode('utf-8')
-        
+
         logger.info(f"Mobile receipt image received: size: {len(image_data)} bytes for session {token}")
         
         # Call OpenAI Vision API
@@ -2771,7 +2851,7 @@ async def scan_receipt_mobile(
                 detail="OpenAI API authentication failed. Please check your API key configuration."
             )
         else:
-            raise HTTPException(status_code=500, detail=f"Error scanning receipt: {error_msg}")
+            raise HTTPException(status_code=500, detail="Failed to process receipt. Please try again.")
 
 
 @app.get("/api/receipt/scan-result/{token}")
@@ -2814,7 +2894,7 @@ def get_user_households(user_id: Optional[str] = Depends(get_user_id)):
         return {"households": households}
     except Exception as e:
         logger.error(f"Error fetching households for user {user_id}: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+        raise HTTPException(status_code=500, detail="An internal error occurred. Please try again.")
 @app.post("/api/households")
 async def create_household(
     name: str,
@@ -2848,7 +2928,7 @@ async def create_household(
         return household_result.data[0]
     except Exception as e:
         logger.error(f"Error creating household for user {user_id}: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Error creating household: {str(e)}")
+        raise HTTPException(status_code=500, detail="An internal error occurred. Please try again.")
 
 @app.post("/api/households/join")
 def join_household(
@@ -2882,7 +2962,7 @@ def join_household(
         raise
     except Exception as e:
         logger.error(f"Error joining household: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+        raise HTTPException(status_code=500, detail="An internal error occurred. Please try again.")
 
 @app.get("/api/households/{household_id}/members")
 def get_household_members(
@@ -2907,7 +2987,7 @@ def get_household_members(
         raise
     except Exception as e:
         logger.error(f"Error fetching household members: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+        raise HTTPException(status_code=500, detail="An internal error occurred. Please try again.")
 
 @app.put("/api/households/{household_id}")
 def update_household(
@@ -2933,7 +3013,7 @@ def update_household(
         raise
     except Exception as e:
         logger.error(f"Error updating household: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Error: {str(e)}")
+        raise HTTPException(status_code=500, detail="An internal error occurred. Please try again.")
 
 # Admin endpoints for user management
 @app.delete("/api/admin/users/{user_email}")
@@ -2969,7 +3049,7 @@ def delete_user_by_email(user_email: str):
                             break
         except Exception as api_error:
             logger.error(f"Error searching for user via REST API: {str(api_error)}")
-            raise HTTPException(status_code=500, detail=f"Could not search for user: {str(api_error)}")
+            raise HTTPException(status_code=500, detail="An internal error occurred. Please try again.")
         
         if not user_id:
             raise HTTPException(status_code=404, detail=f"User with email {user_email} not found")
@@ -2983,7 +3063,7 @@ def delete_user_by_email(user_email: str):
             logger.info(f"Deleted user {user_id} from Supabase Auth")
         except Exception as delete_error:
             logger.error(f"Error deleting user from Auth: {str(delete_error)}")
-            raise HTTPException(status_code=500, detail=f"Could not delete user from Auth: {str(delete_error)}")
+            raise HTTPException(status_code=500, detail="An internal error occurred. Please try again.")
         
         # Clean up related data
         try:
@@ -3012,7 +3092,7 @@ def delete_user_by_email(user_email: str):
         raise
     except Exception as e:
         logger.error(f"Error deleting user {user_email}: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Error deleting user: {str(e)}")
+        raise HTTPException(status_code=500, detail="An internal error occurred. Please try again.")
 
 @app.get("/api/admin/users")
 def list_all_users():
@@ -3067,7 +3147,7 @@ def list_all_users():
         }
     except Exception as e:
         logger.error(f"Error listing users: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Error listing users: {str(e)}")
+        raise HTTPException(status_code=500, detail="An internal error occurred. Please try again.")
 
 # Health check endpoint
 @app.get("/health")
