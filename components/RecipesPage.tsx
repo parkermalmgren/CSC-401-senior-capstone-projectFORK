@@ -29,8 +29,10 @@ export default function RecipesPage() {
   const [selectedHousehold, setSelectedHousehold] = useState<string | null>(null);
   const [missingPopupRecipeId, setMissingPopupRecipeId] = useState<number | null>(null);
   const [prioritizeExpiring, setPrioritizeExpiring] = useState(false);
+  const [householdError, setHouseholdError] = useState<string | null>(null);
 
   const fetchHouseholds = async () => {
+    setHouseholdError(null);
     try {
       const token = (await getAuthToken()) ?? "";
       const base = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
@@ -42,9 +44,17 @@ export default function RecipesPage() {
         const list = data.households || [];
         setHouseholds(list);
         if (list.length > 0) setSelectedHousehold(list[0].id);
+      } else {
+        setHouseholdError(
+          res.status === 401
+            ? "Sign in again to load your households."
+            : "Could not load households. Recipe filters may be limited."
+        );
       }
-    } catch {
-      // ignore
+    } catch (err) {
+      setHouseholdError(
+        err instanceof Error ? err.message : "Could not load households. Check your connection."
+      );
     }
   };
 
@@ -138,6 +148,11 @@ export default function RecipesPage() {
           Find meals you can make with what&apos;s in your pantry. Results are
           based on your current ingredients.
         </p>
+        {householdError && (
+          <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 max-w-xl mx-auto">
+            {householdError}
+          </p>
+        )}
         {households.length > 1 && (
           <div className="flex items-center justify-center gap-2 mt-2">
             <label className="text-sm font-medium text-slate-700">

@@ -78,7 +78,6 @@ export default function LoginPage() {
         errorMessage = error.message;
       }
 
-      console.error("Login error:", error);
       setErr(errorMessage);
     } finally {
       setLoading(false);

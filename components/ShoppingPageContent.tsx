@@ -21,12 +21,13 @@ function loadCheckedStoreIds(): Set<string> {
   }
 }
 
-function saveCheckedStoreIds(ids: Set<string>) {
-  if (typeof window === "undefined") return;
+function saveCheckedStoreIds(ids: Set<string>): boolean {
+  if (typeof window === "undefined") return true;
   try {
     localStorage.setItem(CHECKED_STORES_KEY, JSON.stringify([...ids]));
+    return true;
   } catch {
-    // ignore
+    return false;
   }
 }
 
@@ -43,6 +44,7 @@ export default function ShoppingPageContent() {
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [checkedStoreIds, setCheckedStoreIds] = useState<Set<string>>(new Set());
+  const [checkedStoresPersistError, setCheckedStoresPersistError] = useState<string | null>(null);
 
   const DEFAULT_MAP_CENTER = { lat: 40.7488, lng: -73.9857 };
 
@@ -83,7 +85,13 @@ export default function ShoppingPageContent() {
       const next = new Set(prev);
       if (next.has(storeId)) next.delete(storeId);
       else next.add(storeId);
-      saveCheckedStoreIds(next);
+      if (saveCheckedStoreIds(next)) {
+        setCheckedStoresPersistError(null);
+      } else {
+        setCheckedStoresPersistError(
+          "Could not save visited stores. Storage may be full or blocked (e.g. private browsing)."
+        );
+      }
       return next;
     });
   };
@@ -202,6 +210,11 @@ export default function ShoppingPageContent() {
             <div className="border-l border-slate-100 flex flex-col max-h-[400px]">
               <div className="px-4 py-3 border-b border-slate-100 bg-slate-50/80">
                 <h3 className="font-semibold text-slate-800">Stores in your area</h3>
+                {checkedStoresPersistError && (
+                  <p className="mt-2 text-xs text-amber-800 bg-amber-50 px-2 py-1.5 rounded-lg">
+                    {checkedStoresPersistError}
+                  </p>
+                )}
               </div>
               <div className="flex-1 overflow-y-auto p-3">
                 {!mapCenter && (

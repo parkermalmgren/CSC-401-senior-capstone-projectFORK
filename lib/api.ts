@@ -180,7 +180,6 @@ export async function getItems(options?: {
   // Handle both paginated and array responses (for backward compatibility)
   if (Array.isArray(data)) {
     // Legacy format - convert to paginated format
-    console.warn("API returned array format (legacy), converting to paginated format");
     return {
       items: data,
       total: data.length,
@@ -192,13 +191,10 @@ export async function getItems(options?: {
 
   // New paginated format - ensure items array exists
   if (!data.items) {
-    // If response doesn't have items, but is an object, it might be an error
-    console.error("Unexpected API response format:", data);
     throw new Error("Response missing items array. Response: " + JSON.stringify(data));
   }
 
   if (!Array.isArray(data.items)) {
-    console.error("API response.items is not an array:", typeof data.items, data.items);
     throw new Error("Response items is not an array");
   }
 
