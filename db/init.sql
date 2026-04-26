@@ -54,3 +54,6 @@ CREATE TABLE items (
     FOREIGN KEY (household_id) REFERENCES households(id) ON DELETE CASCADE,
     FOREIGN KEY (food_id) REFERENCES food_catalog(id)
 );
+
+-- Smart Pantry production schema lives in Supabase. For shopping list + RLS, run:
+--   db/migrations/add_shopping_list.sql

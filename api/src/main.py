@@ -8,13 +8,13 @@ import httpx
 import uuid
 import jwt as pyjwt
 from contextlib import asynccontextmanager
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from uuid import UUID
 from pathlib import Path
 from fastapi import FastAPI, HTTPException, Depends, Header, Request, Response, Query
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-from typing import Optional, List, Dict, Tuple
+from pydantic import BaseModel, Field
+from typing import Optional, List, Dict, Tuple, Any, Union
 from supabase import create_client, Client
 from fastapi import UploadFile, File
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -183,6 +183,37 @@ class PaginatedItemsResponse(BaseModel):
     page: int
     page_size: int
     total_pages: int
+
+
+class ShoppingListItemCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=200)
+    quantity: Optional[str] = Field(None, max_length=200)
+
+
+class ShoppingListItemUpdate(BaseModel):
+    name: Optional[str] = Field(None, min_length=1, max_length=200)
+    quantity: Optional[str] = Field(None, max_length=200)
+    checked: Optional[bool] = None
+
+
+class ShoppingListItemResponse(BaseModel):
+    id: str
+    user_id: str
+    household_id: Union[int, str]
+    name: str
+    quantity: Optional[str] = None
+    checked: bool
+    created_at: Any
+    updated_at: Any
+
+
+class ShoppingListItemsResponse(BaseModel):
+    items: List[ShoppingListItemResponse]
+
+
+class ShoppingListClearCheckedResponse(BaseModel):
+    cleared: bool
+
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
@@ -824,7 +855,7 @@ def update_item(item_id: str, item_data: ItemUpdate, request: Request, user_id: 
             )
         update_data["expiration_date"] = item_data.expiration_date.isoformat()
     
-    update_data["updated_at"] = datetime.utcnow().isoformat()
+    update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
     
     try:
         logger.info(f"Updating item {item_id} for user {user_id} with data: {update_data}")
@@ -895,6 +926,216 @@ def delete_item(item_id: str, request: Request, user_id: Optional[str] = Depends
         raise HTTPException(status_code=500, detail="An internal error occurred. Please try again.")
 
 
+def _shopping_list_resolve_household(user_id: str, household_id: Optional[str]) -> Optional[str]:
+    """Return household id string for the user, or None if they have no membership."""
+    if household_id:
+        member_check = (
+            supabase.table("relation_househould")
+            .select("*")
+            .eq("user_id", user_id)
+            .eq("household_id", household_id)
+            .execute()
+        )
+        if not member_check.data:
+            raise HTTPException(status_code=403, detail="Not a member of this household")
+        return str(household_id)
+    household_response = (
+        supabase.table("relation_househould")
+        .select("household_id")
+        .eq("user_id", user_id)
+        .limit(1)
+        .execute()
+    )
+    if not household_response.data:
+        return None
+    return str(household_response.data[0]["household_id"])
+
+
+def _shopping_list_require_household(user_id: str, household_id: Optional[str]) -> str:
+    hid = _shopping_list_resolve_household(user_id, household_id)
+    if not hid:
+        raise HTTPException(
+            status_code=400,
+            detail="No household found. Create or join a household first.",
+        )
+    return hid
+
+
+def _normalize_household_id_for_row(hid: str):
+    return int(hid) if str(hid).isdigit() else hid
+
+
+@app.get("/api/shopping-list", response_model=ShoppingListItemsResponse)
+@limiter.limit("100/minute")
+def list_shopping_list(
+    request: Request,
+    user_id: Optional[str] = Depends(get_user_id),
+    household_id: Optional[str] = Query(None, description="Household ID (defaults to your first household)"),
+):
+    """List shopping list items for the authenticated user's household."""
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    try:
+        hid = _shopping_list_resolve_household(user_id, household_id)
+        if not hid:
+            return {"items": []}
+        hid_val = _normalize_household_id_for_row(hid)
+        response = (
+            supabase.table("shopping_list_items")
+            .select("*")
+            .eq("household_id", hid_val)
+            .order("created_at", desc=True)
+            .execute()
+        )
+        rows = response.data or []
+        return {"items": rows}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error listing shopping list for user {user_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail="An internal error occurred. Please try again.")
+
+
+@app.post("/api/shopping-list", response_model=ShoppingListItemResponse, status_code=201)
+@limiter.limit("100/minute")
+def create_shopping_list_item(
+    item_data: ShoppingListItemCreate,
+    request: Request,
+    user_id: Optional[str] = Depends(get_user_id),
+    household_id: Optional[str] = Query(None, description="Household ID (defaults to your first household)"),
+):
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    name = item_data.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Name is required")
+    qty = item_data.quantity.strip() if item_data.quantity else None
+    if qty == "":
+        qty = None
+    try:
+        hid = _shopping_list_require_household(user_id, household_id)
+        hid_val = _normalize_household_id_for_row(hid)
+        new_row = {
+            "user_id": user_id,
+            "household_id": hid_val,
+            "name": name,
+            "quantity": qty,
+            "checked": False,
+        }
+        response = supabase.table("shopping_list_items").insert(new_row).execute()
+        if not response.data:
+            raise HTTPException(status_code=500, detail="Failed to create shopping list item")
+        return response.data[0]
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error creating shopping list item for user {user_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail="An internal error occurred. Please try again.")
+
+
+@app.post("/api/shopping-list/clear-checked", response_model=ShoppingListClearCheckedResponse)
+@limiter.limit("60/minute")
+def clear_checked_shopping_list_items(
+    request: Request,
+    user_id: Optional[str] = Depends(get_user_id),
+    household_id: Optional[str] = Query(None, description="Household ID (defaults to your first household)"),
+):
+    """Delete all checked shopping list rows for the household."""
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    try:
+        hid = _shopping_list_require_household(user_id, household_id)
+        hid_val = _normalize_household_id_for_row(hid)
+        supabase.table("shopping_list_items").delete().eq("household_id", hid_val).eq("checked", True).execute()
+        return {"cleared": True}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error clearing checked shopping list for user {user_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail="An internal error occurred. Please try again.")
+
+
+@app.put("/api/shopping-list/{item_id}", response_model=ShoppingListItemResponse)
+@limiter.limit("100/minute")
+def update_shopping_list_item(
+    item_id: str,
+    item_data: ShoppingListItemUpdate,
+    request: Request,
+    user_id: Optional[str] = Depends(get_user_id),
+    household_id: Optional[str] = Query(None, description="Household ID (defaults to your first household)"),
+):
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    if (
+        item_data.name is None
+        and item_data.quantity is None
+        and item_data.checked is None
+    ):
+        raise HTTPException(status_code=400, detail="No fields to update")
+    try:
+        hid = _shopping_list_require_household(user_id, household_id)
+        hid_val = _normalize_household_id_for_row(hid)
+        existing = supabase.table("shopping_list_items").select("*").eq("id", item_id).execute()
+        if not existing.data:
+            raise HTTPException(status_code=404, detail="Item not found")
+        row = existing.data[0]
+        if str(row["household_id"]) != str(hid_val):
+            raise HTTPException(status_code=404, detail="Item not found")
+        update_data: Dict = {"updated_at": datetime.now(timezone.utc).isoformat()}
+        if item_data.name is not None:
+            n = item_data.name.strip()
+            if not n:
+                raise HTTPException(status_code=400, detail="Name cannot be empty")
+            update_data["name"] = n
+        if item_data.quantity is not None:
+            q = item_data.quantity.strip()
+            update_data["quantity"] = q if q else None
+        if item_data.checked is not None:
+            update_data["checked"] = item_data.checked
+        response = (
+            supabase.table("shopping_list_items")
+            .update(update_data)
+            .eq("id", item_id)
+            .eq("household_id", hid_val)
+            .execute()
+        )
+        if not response.data:
+            raise HTTPException(status_code=404, detail="Item not found")
+        return response.data[0]
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating shopping list item {item_id} for user {user_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail="An internal error occurred. Please try again.")
+
+
+@app.delete("/api/shopping-list/{item_id}", status_code=204)
+@limiter.limit("100/minute")
+def delete_shopping_list_item(
+    item_id: str,
+    request: Request,
+    user_id: Optional[str] = Depends(get_user_id),
+    household_id: Optional[str] = Query(None, description="Household ID (defaults to your first household)"),
+):
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    try:
+        hid = _shopping_list_require_household(user_id, household_id)
+        hid_val = _normalize_household_id_for_row(hid)
+        existing = supabase.table("shopping_list_items").select("household_id").eq("id", item_id).execute()
+        if not existing.data:
+            raise HTTPException(status_code=404, detail="Item not found")
+        if str(existing.data[0]["household_id"]) != str(hid_val):
+            raise HTTPException(status_code=404, detail="Item not found")
+        supabase.table("shopping_list_items").delete().eq("id", item_id).eq("household_id", hid_val).execute()
+        return None
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting shopping list item {item_id} for user {user_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail="An internal error occurred. Please try again.")
+
+
 class WasteSavedResponse(BaseModel):
     items_saved: int  # Number of items used before expiration
     items_expiring_soon_saved: int  # Items used when expiring soon (3 days or less)
@@ -918,18 +1159,34 @@ def get_waste_saved(
         month_start = date(today.year, today.month, 1)
         
         # Query deleted items that were NOT expired (waste saved)
-        # Filter by user_id and was_expired = False
-        all_saved = supabase.table("deleted_items").select("*").eq("user_id", user_id).eq("was_expired", False).execute()
+        rows: List[dict] = []
+        try:
+            all_saved = (
+                supabase.table("deleted_items")
+                .select("*")
+                .eq("user_id", user_id)
+                .eq("was_expired", False)
+                .execute()
+            )
+            rows = all_saved.data or []
+        except Exception as inner:
+            # Missing table, schema drift, or transient DB errors — don't break the dashboard
+            logger.warning(
+                "waste-saved: deleted_items query failed for user %s: %s",
+                user_id,
+                str(inner),
+            )
+            rows = []
         
         # Calculate statistics
-        all_time_count = len(all_saved.data) if all_saved.data else 0
+        all_time_count = len(rows)
         
         # Count items saved this month
         this_month_count = 0
         expiring_soon_count = 0
         
-        if all_saved.data:
-            for item in all_saved.data:
+        if rows:
+            for item in rows:
                 deleted_at = item.get("deleted_at")
                 if deleted_at:
                     # Parse deleted_at timestamp
@@ -1735,7 +1992,7 @@ def update_profile(profile_data: ProfileUpdate, request: Request, user_id: Optio
     if not update_data:
         raise HTTPException(status_code=400, detail="No fields to update")
     
-    update_data["updated_at"] = datetime.utcnow().isoformat()
+    update_data["updated_at"] = datetime.now(timezone.utc).isoformat()
     
     try:
         logger.info(f"Updating profile for user {user_id} with data: {update_data}")
@@ -1909,7 +2166,7 @@ def update_notification_preferences(data: NotificationPreferencesUpdate, user_id
         data.validate_contact()
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    now = datetime.utcnow().isoformat()
+    now = datetime.now(timezone.utc).isoformat()
     try:
         existing = supabase.table("expiration_notification_preferences").select("user_id").eq("user_id", user_id).limit(1).execute()
         if existing.data and len(existing.data) > 0:

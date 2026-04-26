@@ -613,6 +613,96 @@ export function backendItemToFrontend(item: BackendItem) {
     status,
     addedAt: item.added_at.split("T")[0], // Extract date part
     expiresInDays,
+    quantity: item.quantity,
   };
+}
+
+// --- Shopping list (household-scoped) ---
+
+export interface ShoppingListItem {
+  id: string;
+  user_id: string;
+  household_id: number | string;
+  name: string;
+  quantity: string | null;
+  checked: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ShoppingListItemsResponse {
+  items: ShoppingListItem[];
+}
+
+function shoppingListQuery(householdId?: string | null): string {
+  const params = new URLSearchParams();
+  if (householdId) params.set("household_id", householdId);
+  const q = params.toString();
+  return q ? `?${q}` : "";
+}
+
+export async function getShoppingList(householdId?: string | null): Promise<ShoppingListItem[]> {
+  const url = `${API_BASE_URL}/api/shopping-list${shoppingListQuery(householdId)}`;
+  const response = await authenticatedFetch(url, { method: "GET" });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: "Failed to load shopping list" }));
+    throw new Error(error.detail || "Failed to load shopping list");
+  }
+  const data: ShoppingListItemsResponse = await response.json();
+  return data.items ?? [];
+}
+
+export async function createShoppingListItem(
+  body: { name: string; quantity?: string | null },
+  householdId?: string | null
+): Promise<ShoppingListItem> {
+  const url = `${API_BASE_URL}/api/shopping-list${shoppingListQuery(householdId)}`;
+  const response = await authenticatedFetch(url, {
+    method: "POST",
+    body: JSON.stringify({
+      name: body.name,
+      quantity: body.quantity ?? null,
+    }),
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: "Failed to add item" }));
+    throw new Error(error.detail || "Failed to add item");
+  }
+  return response.json();
+}
+
+export async function updateShoppingListItem(
+  id: string,
+  patch: { name?: string; quantity?: string | null; checked?: boolean },
+  householdId?: string | null
+): Promise<ShoppingListItem> {
+  const url = `${API_BASE_URL}/api/shopping-list/${encodeURIComponent(id)}${shoppingListQuery(householdId)}`;
+  const response = await authenticatedFetch(url, {
+    method: "PUT",
+    body: JSON.stringify(patch),
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: "Failed to update item" }));
+    throw new Error(error.detail || "Failed to update item");
+  }
+  return response.json();
+}
+
+export async function deleteShoppingListItem(id: string, householdId?: string | null): Promise<void> {
+  const url = `${API_BASE_URL}/api/shopping-list/${encodeURIComponent(id)}${shoppingListQuery(householdId)}`;
+  const response = await authenticatedFetch(url, { method: "DELETE" });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: "Failed to delete item" }));
+    throw new Error(error.detail || "Failed to delete item");
+  }
+}
+
+export async function clearCheckedShoppingListItems(householdId?: string | null): Promise<void> {
+  const url = `${API_BASE_URL}/api/shopping-list/clear-checked${shoppingListQuery(householdId)}`;
+  const response = await authenticatedFetch(url, { method: "POST" });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: "Failed to clear checked items" }));
+    throw new Error(error.detail || "Failed to clear checked items");
+  }
 }
 

@@ -4,6 +4,15 @@ import { useState, useEffect, useCallback } from "react";
 import dynamic from "next/dynamic";
 import { fetchNearbyStores, type NearbyStore } from "@/lib/nearby-stores";
 import { geocodeSearch } from "@/lib/geocode";
+import {
+  getShoppingList,
+  createShoppingListItem,
+  updateShoppingListItem,
+  deleteShoppingListItem,
+  clearCheckedShoppingListItems,
+  getAuthToken,
+  type ShoppingListItem,
+} from "@/lib/api";
 
 const StoreMap = dynamic(() => import("@/components/StoreMap"), { ssr: false });
 
@@ -46,12 +55,129 @@ export default function ShoppingPageContent() {
   const [checkedStoreIds, setCheckedStoreIds] = useState<Set<string>>(new Set());
   const [checkedStoresPersistError, setCheckedStoresPersistError] = useState<string | null>(null);
 
+  const [households, setHouseholds] = useState<Array<{ id: string; name: string }>>([]);
+  const [selectedHousehold, setSelectedHousehold] = useState<string | null>(null);
+  const [shopItems, setShopItems] = useState<ShoppingListItem[]>([]);
+  const [shopLoading, setShopLoading] = useState(false);
+  const [shopError, setShopError] = useState<string | null>(null);
+  const [newItemName, setNewItemName] = useState("");
+  const [newItemQty, setNewItemQty] = useState("");
+  const [shopActionBusy, setShopActionBusy] = useState(false);
+
   const DEFAULT_MAP_CENTER = { lat: 40.7488, lng: -73.9857 };
 
   const loadChecked = useCallback(() => setCheckedStoreIds(loadCheckedStoreIds()), []);
   useEffect(() => {
     loadChecked();
   }, [loadChecked]);
+
+  const fetchHouseholds = useCallback(async () => {
+    try {
+      const token = await getAuthToken();
+      if (!token) return;
+      const base = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
+      const response = await fetch(`${base}/api/households`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (response.ok) {
+        const data = await response.json();
+        const list = data.households || [];
+        setHouseholds(list);
+        if (list.length > 0) {
+          setSelectedHousehold((prev) => prev ?? list[0].id);
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchHouseholds();
+  }, [fetchHouseholds]);
+
+  const loadShoppingList = useCallback(async () => {
+    if (!selectedHousehold) {
+      setShopItems([]);
+      return;
+    }
+    setShopLoading(true);
+    setShopError(null);
+    try {
+      const items = await getShoppingList(selectedHousehold);
+      setShopItems(items);
+    } catch (e) {
+      setShopError(e instanceof Error ? e.message : "Failed to load shopping list");
+      setShopItems([]);
+    } finally {
+      setShopLoading(false);
+    }
+  }, [selectedHousehold]);
+
+  useEffect(() => {
+    loadShoppingList();
+  }, [loadShoppingList]);
+
+  const handleAddShoppingItem = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const name = newItemName.trim();
+    if (!name || !selectedHousehold || shopActionBusy) return;
+    setShopActionBusy(true);
+    setShopError(null);
+    try {
+      const created = await createShoppingListItem(
+        { name, quantity: newItemQty.trim() || null },
+        selectedHousehold
+      );
+      setShopItems((prev) => [created, ...prev]);
+      setNewItemName("");
+      setNewItemQty("");
+    } catch (err) {
+      setShopError(err instanceof Error ? err.message : "Could not add item");
+    } finally {
+      setShopActionBusy(false);
+    }
+  };
+
+  const handleToggleShopItem = async (item: ShoppingListItem) => {
+    if (!selectedHousehold) return;
+    const next = !item.checked;
+    setShopItems((prev) => prev.map((x) => (x.id === item.id ? { ...x, checked: next } : x)));
+    try {
+      const updated = await updateShoppingListItem(item.id, { checked: next }, selectedHousehold);
+      setShopItems((prev) => prev.map((x) => (x.id === item.id ? updated : x)));
+    } catch {
+      setShopItems((prev) => prev.map((x) => (x.id === item.id ? { ...x, checked: item.checked } : x)));
+      setShopError("Could not update item. Try again.");
+    }
+  };
+
+  const handleDeleteShopItem = async (id: string) => {
+    if (!selectedHousehold) return;
+    const snapshot = shopItems;
+    setShopItems((prevList) => prevList.filter((x) => x.id !== id));
+    try {
+      await deleteShoppingListItem(id, selectedHousehold);
+    } catch {
+      setShopItems(snapshot);
+      setShopError("Could not delete item.");
+    }
+  };
+
+  const handleClearChecked = async () => {
+    if (!selectedHousehold) return;
+    setShopActionBusy(true);
+    setShopError(null);
+    try {
+      await clearCheckedShoppingListItems(selectedHousehold);
+      setShopItems((prev) => prev.filter((x) => !x.checked));
+    } catch (err) {
+      setShopError(err instanceof Error ? err.message : "Could not clear checked items");
+      loadShoppingList();
+    } finally {
+      setShopActionBusy(false);
+    }
+  };
 
   useEffect(() => {
     if (!mapCenter) {
@@ -143,9 +269,143 @@ export default function ShoppingPageContent() {
   return (
     <div className="max-w-7xl mx-auto px-4 py-8">
       <header className="mb-6">
-        <h1 className="text-4xl font-bold text-slate-800 mb-1">Nearby Shops</h1>
-        <p className="text-slate-600">Use your location or search to find grocery stores nearby.</p>
+        <h1 className="text-4xl font-bold text-slate-800 mb-1">Shopping</h1>
+        <p className="text-slate-600">Your household list and nearby grocery stores.</p>
       </header>
+
+      <section className="mb-8">
+        <div className="bg-white rounded-2xl shadow-lg p-4 sm:p-6 border border-slate-100">
+          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-4">
+            <div>
+              <h2 className="text-xl font-semibold text-slate-800">Your shopping list</h2>
+              <p className="text-sm text-slate-600 mt-1">
+                Shared with everyone in your household. Check items off as you shop.
+              </p>
+            </div>
+            {households.length > 0 && (
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <label htmlFor="shopping-household" className="text-sm text-slate-600 whitespace-nowrap">
+                  Household
+                </label>
+                <select
+                  id="shopping-household"
+                  value={selectedHousehold || ""}
+                  onChange={(e) => setSelectedHousehold(e.target.value || null)}
+                  className="border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white text-slate-800 focus:ring-2 focus:ring-green-500 outline-none"
+                >
+                  {households.map((h) => (
+                    <option key={h.id} value={h.id}>
+                      {h.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+          </div>
+
+          {!selectedHousehold && households.length === 0 && (
+            <p className="text-sm text-slate-500 py-4">
+              Create or join a household to use a shared shopping list.
+            </p>
+          )}
+
+          {selectedHousehold && (
+            <>
+              <form onSubmit={handleAddShoppingItem} className="flex flex-col sm:flex-row gap-2 mb-4">
+                <input
+                  type="text"
+                  value={newItemName}
+                  onChange={(e) => setNewItemName(e.target.value)}
+                  placeholder="Item name"
+                  maxLength={200}
+                  className="flex-1 min-w-0 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-green-500 outline-none"
+                />
+                <input
+                  type="text"
+                  value={newItemQty}
+                  onChange={(e) => setNewItemQty(e.target.value)}
+                  placeholder="Qty (optional)"
+                  maxLength={200}
+                  className="w-full sm:w-36 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:ring-2 focus:ring-green-500 outline-none"
+                />
+                <button
+                  type="submit"
+                  disabled={shopActionBusy || !newItemName.trim()}
+                  className="px-4 py-2 bg-green-600 hover:bg-green-700 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors"
+                >
+                  Add
+                </button>
+              </form>
+
+              {shopError && (
+                <p className="text-sm text-amber-800 bg-amber-50 px-3 py-2 rounded-lg mb-3">{shopError}</p>
+              )}
+
+              <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                <span className="text-xs text-slate-500">
+                  {shopLoading ? "Loading…" : `${shopItems.length} item${shopItems.length !== 1 ? "s" : ""}`}
+                </span>
+                <button
+                  type="button"
+                  onClick={handleClearChecked}
+                  disabled={shopActionBusy || !shopItems.some((i) => i.checked)}
+                  className="text-sm text-slate-700 underline decoration-slate-300 hover:decoration-slate-600 disabled:opacity-40 disabled:no-underline"
+                >
+                  Clear checked
+                </button>
+              </div>
+
+              {shopLoading ? (
+                <p className="text-sm text-slate-500 py-6 text-center">Loading list…</p>
+              ) : shopItems.length === 0 ? (
+                <p className="text-sm text-slate-500 py-6 text-center border border-dashed border-slate-200 rounded-lg">
+                  No items yet. Add something you need to buy.
+                </p>
+              ) : (
+                <ul className="divide-y divide-slate-100 border border-slate-100 rounded-lg overflow-hidden">
+                  {shopItems.map((item) => (
+                    <li
+                      key={item.id}
+                      className="flex items-center gap-3 px-3 py-2.5 bg-white hover:bg-slate-50/80"
+                    >
+                      <button
+                        type="button"
+                        onClick={() => handleToggleShopItem(item)}
+                        className="flex-shrink-0 w-5 h-5 rounded border-2 border-slate-300 flex items-center justify-center hover:border-green-500 focus:outline-none focus:ring-2 focus:ring-green-500 transition-colors"
+                        aria-pressed={item.checked}
+                        aria-label={item.checked ? "Mark not purchased" : "Mark purchased"}
+                      >
+                        {item.checked && <span className="text-green-600 font-bold text-sm">✓</span>}
+                      </button>
+                      <div className="flex-1 min-w-0">
+                        <span
+                          className={`text-sm font-medium text-slate-800 block truncate ${
+                            item.checked ? "line-through text-slate-500" : ""
+                          }`}
+                        >
+                          {item.name}
+                        </span>
+                        {item.quantity ? (
+                          <span className="text-xs text-slate-500 truncate block">
+                            Qty: {item.quantity}
+                          </span>
+                        ) : null}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteShopItem(item.id)}
+                        className="text-xs text-red-600 hover:underline flex-shrink-0 px-2 py-1 rounded hover:bg-red-50"
+                      >
+                        Remove
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </>
+          )}
+        </div>
+      </section>
 
       <section className="mb-6">
         <div className="bg-white rounded-2xl shadow-lg overflow-hidden">
