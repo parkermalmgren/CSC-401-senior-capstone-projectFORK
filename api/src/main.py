@@ -527,13 +527,13 @@ def test_endpoint():
 @limiter.limit("5/minute")  # 5 signup attempts per minute per IP
 def signup(req: SignupRequest, request: Request):
     """Sign up a new user using Supabase Auth"""
-    print(f"SIGNUP STARTED for {req.email}")
+    logger.debug(f"SIGNUP STARTED for {req.email}")
     logger.info(f"Signup attempt for email: {req.email}")
     try:
         # Create user in Supabase Auth with email confirmation disabled for development
         # Using admin API to create user directly (bypasses email confirmation)
         try:
-            print("Trying admin API...")
+            logger.debug("Trying admin API...")
             # First, try to create user using admin API (auto-confirms email)
             admin_response = supabase.auth.admin.create_user({
                 "email": req.email,
@@ -547,26 +547,26 @@ def signup(req: SignupRequest, request: Request):
                 raise HTTPException(status_code=400, detail="Failed to create user")
             
             user_id = str(admin_response.user.id)
-            print(f"Admin user created: {user_id}")
+            logger.debug(f"Admin user created: {user_id}")
             logger.info("Admin user created successfully")
 
             # Create household for admin user
-            print("Creating household...")
+            logger.debug("Creating household...")
             household_result = supabase.table("household").insert({
                 "name": f"{req.name}'s Household"
             }).execute()
-            print(f"Household created: {household_result.data}")
+            logger.debug(f"Household created: {household_result.data}")
 
             household_id = household_result.data[0]["id"]
-            print(f"Creating relation for household {household_id}...")
+            logger.debug(f"Creating relation for household {household_id}...")
             supabase.table("relation_househould").insert({
                 "user_id": user_id,
                 "household_id": household_id
             }).execute()
-            print("Relation created successfully")
+            logger.debug("Relation created successfully")
 
         except Exception as admin_error:
-            print(f"Admin API failed: {admin_error}")
+            logger.debug(f"Admin API failed: {admin_error}")
             # Fallback to regular sign_up if admin API fails
             auth_response = supabase.auth.sign_up({
                 "email": req.email,
@@ -582,7 +582,7 @@ def signup(req: SignupRequest, request: Request):
                 raise HTTPException(status_code=400, detail="Failed to create user")
             
             user_id = str(auth_response.user.id)
-            print(f"Fallback user created: {user_id}")
+            logger.debug(f"Fallback user created: {user_id}")
             logger.info("Fallback user created successfully")
             
             # If user was created but not confirmed, try to confirm them
@@ -595,19 +595,19 @@ def signup(req: SignupRequest, request: Request):
                 pass  # If we can't auto-confirm, user will need to confirm via email
             
             # Create household for fallback user
-            print("Creating household (fallback)...")
+            logger.debug("Creating household (fallback)...")
             household_result = supabase.table("household").insert({
                 "name": f"{req.name}'s Household"
             }).execute()
-            print(f"Household created (fallback): {household_result.data}")
+            logger.debug(f"Household created (fallback): {household_result.data}")
             
             household_id = household_result.data[0]["id"]
-            print(f"Creating relation for household {household_id} (fallback)...")
+            logger.debug(f"Creating relation for household {household_id} (fallback)...")
             supabase.table("relation_househould").insert({
                 "user_id": user_id,
                 "household_id": household_id
             }).execute()
-            print("Relation created successfully (fallback)")
+            logger.debug("Relation created successfully (fallback)")
         
         # Create profile (trigger should handle this, but ensure it exists)
         try:
@@ -645,8 +645,8 @@ def signup(req: SignupRequest, request: Request):
     except Exception as e:
         error_msg = str(e)
         logger.error(f"Signup failed for email: {req.email} - {error_msg}")
-        print(f"FULL ERROR: {repr(e)}")
-        print(f"ERROR TYPE: {type(e).__name__}")
+        logger.debug(f"FULL ERROR: {repr(e)}")
+        logger.debug(f"ERROR TYPE: {type(e).__name__}")
         if "already registered" in error_msg.lower() or "user already exists" in error_msg.lower():
             raise HTTPException(status_code=400, detail="User already exists")
         raise HTTPException(status_code=500, detail="Sign up failed. Please try again.")

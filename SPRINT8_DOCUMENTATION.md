@@ -15,7 +15,7 @@ Sprint 8 was scoped in `suggested_sprint8_implementations.md`: shopping list fea
 | Recipes — households | `components/RecipesPage.tsx` | Loading `/api/households` now sets `householdError` on network failure, non-OK responses (with a specific message for 401), and shows an amber banner under the page intro. |
 | Shopping — visited stores | `components/ShoppingPageContent.tsx` | `saveCheckedStoreIds` returns `boolean`. If `localStorage.setItem` fails (quota, private browsing, etc.), an inline warning appears under **Stores in your area**; successful saves clear the message. |
 
-### Tier 1.1 — Production debug output (partial)
+### Tier 1.1 — Production debug output (Creed, 2026-04-26)
 
 **Goal:** Reduce noisy or redundant logging in production-facing frontend code.
 
@@ -23,6 +23,8 @@ Sprint 8 was scoped in `suggested_sprint8_implementations.md`: shopping list fea
 |------|--------|
 | `lib/api.ts` | Removed `console.warn` / `console.error` in the pantry items fetch path. Invalid or legacy responses still throw `Error` with the same messages; behavior is unchanged aside from console noise. |
 | `app/(routes)/login/page.tsx` | Removed redundant `console.error` before `setErr`; login errors remain user-visible in the form. |
+| `api/src/main.py` | Signup-path `print()` debug statements were replaced with `logger.debug(...)` so production logs stay structured while preserving all control flow and error handling. |
+| `app/scan-receipt/page.tsx` | Removed non-essential `console.log(...)` tracing (hostname, API URL, upload metadata/headers, success trace) while keeping warnings/errors and upload behavior unchanged. |
 
 ### Tier 1.1 — Waste saved endpoint resilience (reliability)
 
@@ -97,7 +99,7 @@ Sprint 8 was scoped in `suggested_sprint8_implementations.md`: shopping list fea
 
 The following major themes from `suggested_sprint8_implementations.md` remain **open** or **partial** after the items above. Use that file as the source of truth for backlog:
 
-- **Tier 1.1 (remainder):** Signup `print()` cleanup in `api/src/main.py`, broader input validation caps on other endpoints (e.g. recipes-by-ingredients query length, ZIP on price-compare) where not already enforced.
+- **Tier 1.1 (remainder):** Broader input validation caps on other endpoints (e.g. recipes-by-ingredients query length, ZIP on price-compare) where not already enforced.
 - **Tier 2:** Receipt-scan refactor, notification-config UX, accessibility pass, remaining backend endpoint tests (pantry items CRUD, household join, auth — see §2.5 above), pinned `requirements.txt`, `.env.example`, `DEMO.md`, README updates, price-compare UI, and other polish items.
 
 ## Verification (completed items)
@@ -107,7 +109,7 @@ The following major themes from `suggested_sprint8_implementations.md` remain **
 - **Shopping (list):** After applying the shopping-list migration, users with a household can use `/shopping` for full CRUD; pantry **cart** adds **one line per click** with **no auto-filled quantity** from pantry stock.
 - **Waste saved:** If `deleted_items` cannot be read, the API still returns zeros and the dashboard card stays usable without a 500-driven dev overlay from this path.
 - **Pantry:** Items missing expiration dates should eventually get suggested dates (background backfill); **View full pantry** opens a modal instead of relying on navigation for that action.
-- **Console:** Pantry list fetch and successful login error paths should not emit the removed `console.*` calls from the changed code paths.
+- **Console (Creed, 2026-04-26):** Pantry list fetch and successful login paths should not emit the removed `console.*` calls; `app/scan-receipt/page.tsx` no longer emits debug `console.log(...)` traces during URL detection/upload.
 - **Tests:** From `api/`, `python -m pytest tests/test_shopping_list_crud.py tests/test_admin_and_food_search.py -v` should pass with no `utcnow` deprecation warnings.
 - **Admin (Creed, 2026-04-26):** Without `Authorization`, `GET /api/admin/users` returns **401**. With a valid JWT whose `profiles.email` is not listed in `ADMIN_EMAILS`, returns **403**. With email allow-listed, returns **200** (live Supabase/httpx).
 - **Food search (Creed, 2026-04-26):** Without auth, `GET /api/food/search?query=milk` returns **401**. With auth, empty or over-200-char query returns **400**.
@@ -119,4 +121,4 @@ The following major themes from `suggested_sprint8_implementations.md` remain **
 
 ---
 
-*Last updated: 2026-04-26 — **Creed:** Tier 1.1 admin allow-list (`ADMIN_EMAILS`), secured `/api/food/search`, bounded `scan_sessions` / `_token_cache`, `test_admin_and_food_search.py`; sprint doc aligned (receipt scan-result ownership was already in code).*
+*Last updated: 2026-04-26 — **Creed:** Tier 1.1 admin allow-list (`ADMIN_EMAILS`), secured `/api/food/search`, bounded `scan_sessions` / `_token_cache`, added `test_admin_and_food_search.py`, and completed logging cleanup (`api/src/main.py` signup debug prints + `app/scan-receipt/page.tsx` debug console logs).*
