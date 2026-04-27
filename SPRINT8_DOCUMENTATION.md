@@ -97,12 +97,21 @@ Sprint 8 was scoped in `suggested_sprint8_implementations.md`: shopping list fea
 
 **Not done in this slice (still optional per original sprint doc):** Step 6 “Compare prices” wiring to `/api/price-compare`, and any extra README feature-list edits beyond the dashboard tile.
 
+### Tier 2 — Demo readiness docs (Creed, 2026-04-26)
+
+**Goal:** Make local demo setup reproducible for graders and teammates.
+
+| File | Change |
+|------|--------|
+| `/.env.example` | Added safe placeholder template for frontend/shared runtime keys (`NEXT_PUBLIC_*`, Supabase, origins, `ADMIN_EMAILS`). |
+| `/api/.env.example` | Added backend placeholder template for Supabase/API integrations, Apify tuning, reminder channels (`SMTP_*`, Twilio), and scheduler vars. |
+
 ## Not completed (still on the Sprint 8 plan)
 
 The following major themes from `suggested_sprint8_implementations.md` remain **open** or **partial** after the items above. Use that file as the source of truth for backlog:
 
-- **Tier 1.1 (remainder):** Broader input validation caps on other endpoints (e.g. recipes-by-ingredients query length, ZIP on price-compare) where not already enforced.
-- **Tier 2:** Receipt-scan refactor, notification-config UX, accessibility pass, pinned `requirements.txt`, `.env.example`, `DEMO.md`, README updates, price-compare UI, and other polish items.
+- **Tier 1.1 (remainder):** Optional additional input guards beyond current sprint scope (if desired), but the previously called-out recipes-length and price-compare ZIP checks are now implemented.
+- **Tier 2:** Receipt-scan refactor, notification-config UX, accessibility pass, pinned `requirements.txt`, README updates, price-compare UI, and other polish items.
 
 ## Verification (completed items)
 
@@ -115,6 +124,7 @@ The following major themes from `suggested_sprint8_implementations.md` remain **
 - **Tests (Creed, 2026-04-26):** From `api/`, `python -m pytest tests/ -v` passes (43 tests), including the new files `test_items_and_households.py` and `test_auth_login.py`.
 - **Admin (Creed, 2026-04-26):** Without `Authorization`, `GET /api/admin/users` returns **401**. With a valid JWT whose `profiles.email` is not listed in `ADMIN_EMAILS`, returns **403**. With email allow-listed, returns **200** (live Supabase/httpx).
 - **Food search (Creed, 2026-04-26):** Without auth, `GET /api/food/search?query=milk` returns **401**. With auth, empty or over-200-char query returns **400**.
+- **Validation hardening (Creed, 2026-04-26):** `GET /api/recipes/by-ingredients` returns **400** when normalized ingredients input exceeds 200 chars; `GET /api/price-compare` returns **400** when ZIP is not exactly 5 digits.
 
 ## Related documents
 
@@ -123,4 +133,4 @@ The following major themes from `suggested_sprint8_implementations.md` remain **
 
 ---
 
-*Last updated: 2026-04-26 — **Creed:** Tier 1.1 admin allow-list (`ADMIN_EMAILS`), secured `/api/food/search`, bounded `scan_sessions` / `_token_cache`, completed logging cleanup (`api/src/main.py` signup debug prints + `app/scan-receipt/page.tsx` debug console logs), and finished remaining backend endpoint tests (`test_items_and_households.py`, `test_auth_login.py`).*
+*Last updated: 2026-04-26 — **Creed:** Tier 1.1 admin allow-list (`ADMIN_EMAILS`), secured `/api/food/search`, bounded `scan_sessions` / `_token_cache`, completed logging cleanup (`api/src/main.py` signup debug prints + `app/scan-receipt/page.tsx` debug console logs), finished remaining backend endpoint tests (`test_items_and_households.py`, `test_auth_login.py`), completed input validation hardening for recipes length + 5-digit price-compare ZIP (`test_input_validation_endpoints.py`), and added demo readiness env docs (`.env.example`, `api/.env.example`).*

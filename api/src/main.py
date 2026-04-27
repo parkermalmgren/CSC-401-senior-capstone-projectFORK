@@ -2498,12 +2498,14 @@ def price_compare(
     Returns normalized results and cheapest item; uses usage guard and cache.
     When Apify is disabled (usage limit), returns empty results with reason.
     """
-    from .services.apify_client import can_use_apify, cached_search
-
     query = (query or "").strip()
     zip_code = (zip or "").strip()
     if not query or not zip_code:
         raise HTTPException(status_code=400, detail="query and zip are required")
+    if not re.fullmatch(r"\d{5}", zip_code):
+        raise HTTPException(status_code=400, detail="zip must be a 5-digit US ZIP code")
+    
+    from .services.apify_client import can_use_apify, cached_search
 
     apify_enabled, reason = can_use_apify()
     if not apify_enabled:
@@ -2636,6 +2638,8 @@ async def get_recipes_by_ingredients(
     ingredients_clean = ",".join(s.strip() for s in ingredients.split(",") if s.strip())
     if not ingredients_clean:
         return {"recipes": []}
+    if len(ingredients_clean) > 200:
+        raise HTTPException(status_code=400, detail="ingredients must be at most 200 characters")
     try:
         if diet:
             # complexSearch supports includeIngredients + diet; fillIngredients gives used/missed per recipe
