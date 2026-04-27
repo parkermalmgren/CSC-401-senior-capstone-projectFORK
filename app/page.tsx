@@ -2,10 +2,15 @@
 import Link from "next/link";
 import Image from "next/image";
 import LandingPageFooter from "@/components/LandingPageFooter";
+import AuthRecoveryHashRedirect from "@/components/AuthRecoveryHashRedirect";
 
 export default function Home() {
-  // Always show the landing page at home route
-  return <MarketingHome />;
+  return (
+    <>
+      <AuthRecoveryHashRedirect />
+      <MarketingHome />
+    </>
+  );
 }
 
 function MarketingHome() {

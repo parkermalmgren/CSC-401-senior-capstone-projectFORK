@@ -11,6 +11,7 @@ from contextlib import asynccontextmanager
 from datetime import date, datetime, timedelta, timezone
 from uuid import UUID
 from pathlib import Path
+from urllib.parse import urlparse
 from fastapi import FastAPI, HTTPException, Depends, Header, Request, Response, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
@@ -314,6 +315,41 @@ else:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+# Same pattern as CORSMiddleware dev branch — used to accept local-network Origins for password reset redirects.
+_local_network_origin_pattern = re.compile(
+    r"^http://(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.(1[6-9]|2[0-9]|3[0-1])\.\d+\.\d+)(:\d+)?$"
+)
+
+
+def _normalize_origin(origin: str) -> str:
+    return origin.rstrip("/")
+
+
+def _origin_is_allowed(origin: str) -> bool:
+    n = _normalize_origin(origin)
+    allowed = {_normalize_origin(o) for o in allowed_origins}
+    if n in allowed:
+        return True
+    if os.getenv("NODE_ENV", "development") == "development" and _local_network_origin_pattern.match(n):
+        return True
+    return False
+
+
+def _frontend_base_from_request(request: Request) -> Optional[str]:
+    """Prefer the browser's Origin (or Referer) when it matches CORS policy so reset links use production URLs."""
+    origin_header = request.headers.get("origin")
+    if origin_header and _origin_is_allowed(origin_header):
+        return _normalize_origin(origin_header)
+    referer = request.headers.get("referer")
+    if referer:
+        parsed = urlparse(referer)
+        if parsed.scheme and parsed.netloc:
+            candidate = _normalize_origin(f"{parsed.scheme}://{parsed.netloc}")
+            if _origin_is_allowed(candidate):
+                return candidate
+    return None
+
 
 # Request logging middleware
 @app.middleware("http")
@@ -704,7 +740,8 @@ def forgot_password(req: ForgotPasswordRequest, request: Request):
         raise HTTPException(status_code=400, detail="Email is required")
 
     frontend_url = (
-        os.getenv("NEXT_PUBLIC_FRONTEND_URL")
+        _frontend_base_from_request(request)
+        or os.getenv("NEXT_PUBLIC_FRONTEND_URL")
         or os.getenv("FRONTEND_URL")
         or "http://localhost:3000"
     )
