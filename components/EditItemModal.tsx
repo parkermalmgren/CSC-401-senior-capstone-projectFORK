@@ -4,7 +4,7 @@
 "use client";
 
 import { useState, FormEvent, useEffect, useCallback, useRef } from "react";
-import { BackendItem, suggestExpirationDate } from "@/lib/api";
+import { BackendItem, suggestExpirationDate, getAuthToken } from "@/lib/api";
 import { API_BASE_URL } from "@/lib/config";
 
 interface EditItemModalProps {
@@ -145,9 +145,18 @@ export default function EditItemModal({ isOpen, onClose, onUpdate, item, isPendi
     setSearching(true);
     const timer = setTimeout(async () => {
       try {
-        const response = await fetch(`${API_BASE_URL}/api/food/search?query=${encodeURIComponent(searchQuery)}`);
+        const token = await getAuthToken();
+        if (!token) {
+          setSearchResults([]);
+          setShowResults(false);
+          return;
+        }
+        const response = await fetch(
+          `${API_BASE_URL}/api/food/search?query=${encodeURIComponent(searchQuery)}`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
         const data = await response.json();
-        setSearchResults(data.results || []);
+        setSearchResults(Array.isArray(data) ? data : []);
         setShowResults(true);
       } catch (err) {
         console.error("Error searching food:", err);

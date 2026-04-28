@@ -4,10 +4,13 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import BasketIcon from "./BasketIcon";
+import { clearAuthToken } from "@/lib/api";
 
+// Read the JS-visible hint cookie (sp_session_exists) to detect auth state.
+// The actual session token (sp_session) is HttpOnly and not accessible here.
 function hasSessionCookie() {
   if (typeof document === "undefined") return false;
-  return document.cookie.split("; ").some((c) => c.startsWith("sp_session="));
+  return document.cookie.split("; ").some((c) => c.startsWith("sp_session_exists="));
 }
 
 export default function Navbar() {
@@ -37,8 +40,10 @@ export default function Navbar() {
     setMobileMenuOpen(false);
   }, [pathname]);
 
-  function handleLogout() {
-    document.cookie = "sp_session=; Max-Age=0; Path=/";
+  async function handleLogout() {
+    clearAuthToken();
+    // Ask the server to clear the HttpOnly cookie
+    await fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
     window.dispatchEvent(new Event("auth-change"));
     router.replace("/");
     setMobileMenuOpen(false);

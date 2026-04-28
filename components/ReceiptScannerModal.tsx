@@ -3,6 +3,7 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { QRCodeSVG } from "qrcode.react";
+import { getAuthToken } from "@/lib/api";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
 
@@ -94,10 +95,7 @@ export default function ReceiptScannerModal({ isOpen, onClose, onItemsAdded }: R
     
     const poll = async () => {
       try {
-        const sessionToken = document.cookie
-          .split('; ')
-          .find(row => row.startsWith('sp_session='))
-          ?.split('=')[1];
+        const sessionToken = await getAuthToken();
 
         const response = await fetch(`${API_BASE_URL}/api/receipt/scan-result/${token}`, {
           headers: {
@@ -139,10 +137,7 @@ export default function ReceiptScannerModal({ isOpen, onClose, onItemsAdded }: R
 
   const createScanSession = useCallback(async () => {
     try {
-      const token = document.cookie
-        .split('; ')
-        .find(row => row.startsWith('sp_session='))
-        ?.split('=')[1];
+      const token = await getAuthToken();
 
       const response = await fetch(`${API_BASE_URL}/api/receipt/create-session`, {
         method: 'POST',
@@ -218,10 +213,7 @@ export default function ReceiptScannerModal({ isOpen, onClose, onItemsAdded }: R
     setIsScanning(true);
 
     try{
-      const token = document.cookie
-          .split('; ')
-          .find(row => row.startsWith('sp_session='))
-          ?.split('=')[1];
+      const token = await getAuthToken();
 
       const formData = new FormData();
       formData.append('file', selectedFile);

@@ -9,7 +9,7 @@ Apify client for hybrid grocery price source (Instacart scraper Actor).
 import logging
 import os
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 import httpx
@@ -177,7 +177,7 @@ def normalize_items(raw_items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     source, store, name, price, unit_price, size, url, retrieved_at.
     Handles multiple field names and logs when nothing matches.
     """
-    retrieved_at = datetime.utcnow().isoformat() + "Z"
+    retrieved_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     out = []
     items = raw_items or []
     # Unwrap if API returned { "items": [...] } or { "results": [...] }

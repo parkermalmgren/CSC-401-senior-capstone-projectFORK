@@ -5,6 +5,8 @@ export type PantryItem = {
   status: "fresh" | "expiring" | "expired";
   addedAt: string;           // ISO date
   expiresInDays?: number;
+  /** Pantry quantity from backend (optional; used e.g. when adding to shopping list) */
+  quantity?: number;
 };
 
 export const pantryItems: PantryItem[] = [

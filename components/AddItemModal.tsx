@@ -4,7 +4,7 @@
 "use client";
 
 import { useState, FormEvent, useEffect, useCallback, useRef } from "react";
-import { suggestExpirationDate } from "@/lib/api";
+import { suggestExpirationDate, getAuthToken } from "@/lib/api";
 import { API_BASE_URL } from "@/lib/config";
 
 interface AddItemModalProps {
@@ -125,9 +125,18 @@ export default function AddItemModal({ isOpen, onClose, onCreate, isPending = fa
     setSearching(true);
     const timer = setTimeout(async () => {
       try {
-        const response = await fetch(`${API_BASE_URL}/api/food/search?query=${encodeURIComponent(searchQuery)}`);
+        const token = await getAuthToken();
+        if (!token) {
+          setSearchResults([]);
+          setShowResults(false);
+          return;
+        }
+        const response = await fetch(
+          `${API_BASE_URL}/api/food/search?query=${encodeURIComponent(searchQuery)}`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
         const data = await response.json();
-        setSearchResults(data || []);
+        setSearchResults(Array.isArray(data) ? data : []);
         setShowResults(true);
       } catch {
         setSearchResults([]);

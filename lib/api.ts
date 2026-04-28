@@ -33,37 +33,50 @@ export interface UpdateItemRequest {
   is_opened?: boolean;
 }
 
-// Helper to get user ID from session cookie
-function getUserId(): string | null {
-  if (typeof document === "undefined") return null;
-  
-  const cookies = document.cookie.split("; ");
-  const sessionCookie = cookies.find((c) => c.startsWith("sp_session="));
-  
-  if (!sessionCookie) return null;
-  
-  const token = sessionCookie.split("=")[1];
-  
-  // Handle old format: "user_{id}" or new format: UUID
-  if (token.startsWith("user_")) {
-    return token.replace("user_", "");
-  }
-  
-  return token;
+// In-memory token storage — survives navigation but not page refresh.
+// On refresh, getAuthToken() re-hydrates from the HttpOnly cookie via /api/auth/token.
+let _authToken: string | null = null;
+
+/** Store the JWT in memory after login/signup. */
+export function setAuthToken(token: string): void {
+  _authToken = token;
 }
 
-// Helper to get auth header
-function getAuthHeader(): string | null {
-  const userId = getUserId();
-  if (!userId) return null;
-  return `Bearer ${userId}`;
+/** Clear the in-memory token on logout. */
+export function clearAuthToken(): void {
+  _authToken = null;
+}
+
+/**
+ * Return the current JWT.
+ * Uses the in-memory value when available; otherwise asks the Next.js
+ * /api/auth/token route to read the HttpOnly cookie server-side.
+ */
+export async function getAuthToken(): Promise<string | null> {
+  if (_authToken) return _authToken;
+
+  // Re-hydrate from the HttpOnly cookie (requires a same-origin server round-trip)
+  try {
+    const res = await fetch("/api/auth/token", { method: "GET" });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.token) {
+        _authToken = data.token;
+        return _authToken;
+      }
+    }
+  } catch {
+    // Not authenticated or network error
+  }
+  return null;
 }
 
 // Helper to handle authentication errors and redirect if needed
-function handleAuthError(status: number): void {
+async function handleAuthError(status: number): Promise<void> {
   if (status === 401) {
-    // Clear session cookie
-    document.cookie = "sp_session=; Max-Age=0; Path=/";
+    clearAuthToken();
+    // Ask the server to clear the HttpOnly cookie
+    await fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
     // Dispatch auth change event
     window.dispatchEvent(new Event("auth-change"));
     // Redirect to login after a brief delay to allow UI to update
@@ -80,8 +93,8 @@ async function authenticatedFetch(
   url: string,
   options: RequestInit = {}
 ): Promise<Response> {
-  const authHeader = getAuthHeader();
-  if (!authHeader) {
+  const token = await getAuthToken();
+  if (!token) {
     throw new Error("Not authenticated");
   }
 
@@ -89,14 +102,14 @@ async function authenticatedFetch(
     ...options,
     headers: {
       "Content-Type": "application/json",
-      Authorization: authHeader,
+      Authorization: `Bearer ${token}`,
       ...options.headers,
     },
   });
 
   // Handle authentication errors globally
   if (response.status === 401) {
-    handleAuthError(401);
+    await handleAuthError(401);
     throw new Error("Authentication required. Please log in again.");
   }
   
@@ -167,7 +180,6 @@ export async function getItems(options?: {
   // Handle both paginated and array responses (for backward compatibility)
   if (Array.isArray(data)) {
     // Legacy format - convert to paginated format
-    console.warn("API returned array format (legacy), converting to paginated format");
     return {
       items: data,
       total: data.length,
@@ -179,13 +191,10 @@ export async function getItems(options?: {
 
   // New paginated format - ensure items array exists
   if (!data.items) {
-    // If response doesn't have items, but is an object, it might be an error
-    console.error("Unexpected API response format:", data);
     throw new Error("Response missing items array. Response: " + JSON.stringify(data));
   }
 
   if (!Array.isArray(data.items)) {
-    console.error("API response.items is not an array:", typeof data.items, data.items);
     throw new Error("Response items is not an array");
   }
 
@@ -604,6 +613,96 @@ export function backendItemToFrontend(item: BackendItem) {
     status,
     addedAt: item.added_at.split("T")[0], // Extract date part
     expiresInDays,
+    quantity: item.quantity,
   };
+}
+
+// --- Shopping list (household-scoped) ---
+
+export interface ShoppingListItem {
+  id: string;
+  user_id: string;
+  household_id: number | string;
+  name: string;
+  quantity: string | null;
+  checked: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ShoppingListItemsResponse {
+  items: ShoppingListItem[];
+}
+
+function shoppingListQuery(householdId?: string | null): string {
+  const params = new URLSearchParams();
+  if (householdId) params.set("household_id", householdId);
+  const q = params.toString();
+  return q ? `?${q}` : "";
+}
+
+export async function getShoppingList(householdId?: string | null): Promise<ShoppingListItem[]> {
+  const url = `${API_BASE_URL}/api/shopping-list${shoppingListQuery(householdId)}`;
+  const response = await authenticatedFetch(url, { method: "GET" });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: "Failed to load shopping list" }));
+    throw new Error(error.detail || "Failed to load shopping list");
+  }
+  const data: ShoppingListItemsResponse = await response.json();
+  return data.items ?? [];
+}
+
+export async function createShoppingListItem(
+  body: { name: string; quantity?: string | null },
+  householdId?: string | null
+): Promise<ShoppingListItem> {
+  const url = `${API_BASE_URL}/api/shopping-list${shoppingListQuery(householdId)}`;
+  const response = await authenticatedFetch(url, {
+    method: "POST",
+    body: JSON.stringify({
+      name: body.name,
+      quantity: body.quantity ?? null,
+    }),
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: "Failed to add item" }));
+    throw new Error(error.detail || "Failed to add item");
+  }
+  return response.json();
+}
+
+export async function updateShoppingListItem(
+  id: string,
+  patch: { name?: string; quantity?: string | null; checked?: boolean },
+  householdId?: string | null
+): Promise<ShoppingListItem> {
+  const url = `${API_BASE_URL}/api/shopping-list/${encodeURIComponent(id)}${shoppingListQuery(householdId)}`;
+  const response = await authenticatedFetch(url, {
+    method: "PUT",
+    body: JSON.stringify(patch),
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: "Failed to update item" }));
+    throw new Error(error.detail || "Failed to update item");
+  }
+  return response.json();
+}
+
+export async function deleteShoppingListItem(id: string, householdId?: string | null): Promise<void> {
+  const url = `${API_BASE_URL}/api/shopping-list/${encodeURIComponent(id)}${shoppingListQuery(householdId)}`;
+  const response = await authenticatedFetch(url, { method: "DELETE" });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: "Failed to delete item" }));
+    throw new Error(error.detail || "Failed to delete item");
+  }
+}
+
+export async function clearCheckedShoppingListItems(householdId?: string | null): Promise<void> {
+  const url = `${API_BASE_URL}/api/shopping-list/clear-checked${shoppingListQuery(householdId)}`;
+  const response = await authenticatedFetch(url, { method: "POST" });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: "Failed to clear checked items" }));
+    throw new Error(error.detail || "Failed to clear checked items");
+  }
 }
 
