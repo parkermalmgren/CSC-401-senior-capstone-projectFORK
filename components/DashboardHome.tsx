@@ -63,141 +63,141 @@ function PantryListPanel({
   onEditItem: (i: Item) => void;
   onDeleteClick: (id: string) => void;
 }) {
-  return (
-    <>
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-2">
-        <div className="flex items-center gap-2 flex-1">
-          <input
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search"
-            className="border rounded-full px-3 py-1.5 text-base sm:text-sm flex-1 min-w-0"
-            disabled={loading}
-          />
-          <div className="hidden md:flex items-center gap-2">
-            <Pill color="#22c55e">Fresh</Pill>
-            <Pill color="#fbbf24">Expiring Soon</Pill>
-            <Pill color="#ef4444">Expired</Pill>
-          </div>
-        </div>
-        <div className="flex items-center gap-2 flex-shrink-0">
-          <label className="text-xs sm:text-sm text-slate-600">Sort</label>
-          <select
-            value={sort}
-            onChange={(e) => setSort(e.target.value as "added" | "expires")}
-            className="border rounded-lg px-2 py-1 text-base sm:text-sm bg-white"
-            disabled={loading}
-          >
-            <option value="added">Recently Added</option>
-            <option value="expires">Expires (Soonest First)</option>
-          </select>
-        </div>
-      </div>
+   return (
+     <>
+       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 sm:gap-2">
+         <div className="flex items-center gap-2 flex-1">
+           <input
+             value={query}
+             onChange={(e) => setQuery(e.target.value)}
+             placeholder="Search"
+             className="border rounded-full px-2 py-1 text-xs sm:text-sm flex-1 min-w-0"
+             disabled={loading}
+           />
+           <div className="hidden md:flex items-center gap-2">
+             <Pill color="#22c55e">Fresh</Pill>
+             <Pill color="#fbbf24">Expiring Soon</Pill>
+             <Pill color="#ef4444">Expired</Pill>
+           </div>
+         </div>
+         <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
+           <label className="text-xs sm:text-sm text-slate-600">Sort</label>
+           <select
+             value={sort}
+             onChange={(e) => setSort(e.target.value as "added" | "expires")}
+             className="border rounded-lg px-1.5 py-0.5 sm:px-2 sm:py-1 text-xs sm:text-sm bg-white"
+             disabled={loading}
+           >
+             <option value="added">Recently Added</option>
+             <option value="expires">Expires (Soonest First)</option>
+           </select>
+         </div>
+       </div>
 
-      {loading && (
-        <div className="text-center py-8 text-slate-500">
-          <p>Loading pantry items...</p>
-        </div>
-      )}
+       {loading && (
+         <div className="text-center py-4 sm:py-8 text-slate-500">
+           <p className="text-xs sm:text-sm">Loading pantry items...</p>
+         </div>
+       )}
 
-      {error && (
-        <div className="text-center py-8">
-          <p className="text-red-600 mb-2">{error}</p>
-          <button
-            type="button"
-            onClick={() => window.location.reload()}
-            className="text-sm text-blue-600 hover:underline"
-          >
-            Try again
-          </button>
-        </div>
-      )}
+       {error && (
+         <div className="text-center py-4 sm:py-8">
+           <p className="text-red-600 mb-2 text-xs sm:text-sm">{error}</p>
+           <button
+             type="button"
+             onClick={() => window.location.reload()}
+             className="text-xs sm:text-sm text-blue-600 hover:underline"
+           >
+             Try again
+           </button>
+         </div>
+       )}
 
-      {!loading && !error && (
-        <div className={`divide-y overflow-y-auto ${listScrollClassName}`}>
-          {filtered.length === 0 ? (
-            <div className="text-center py-8 text-slate-500">
-              <p>No items found. {query ? "Try a different search." : "Add your first item to get started!"}</p>
-            </div>
-          ) : (
-            filtered.map((i) => (
-              <div key={i.id} className="py-2 sm:py-3 flex items-center justify-between gap-2">
-                <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
-                  <span
-                    className="inline-block w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full flex-shrink-0"
-                    style={{
-                      backgroundColor:
-                        i.status === "fresh" ? "#22c55e" : i.status === "expiring" ? "#fbbf24" : "#ef4444",
-                    }}
-                  />
-                  <span className="font-medium text-sm sm:text-base truncate">{i.name}</span>
-                </div>
-                <div className="flex items-center gap-2 flex-shrink-0">
-                  <span className="text-xs text-slate-500">
-                    {i.status === "expired"
-                      ? "expired"
-                      : typeof i.expiresInDays === "number"
-                        ? `${i.expiresInDays}d`
-                        : ""}
-                  </span>
-                  <div className="flex items-center gap-1">
-                    <button
-                      type="button"
-                      onClick={() => onAddToShoppingList(i)}
-                      disabled={isPending || !selectedHousehold || addingToShoppingList}
-                      className="p-1.5 text-green-700 hover:bg-green-50 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                      title="Add to shopping list"
-                    >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"
-                        />
-                      </svg>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => onEditItem(i)}
-                      disabled={isPending}
-                      className="p-1.5 text-blue-600 hover:bg-blue-50 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                      title="Edit item"
-                    >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
-                        />
-                      </svg>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => onDeleteClick(i.id)}
-                      disabled={isPending}
-                      className="p-1.5 text-red-600 hover:bg-red-50 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                      title="Delete item"
-                    >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
-                        />
-                      </svg>
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ))
-          )}
-        </div>
-      )}
-    </>
-  );
+       {!loading && !error && (
+         <div className={`divide-y overflow-y-auto ${listScrollClassName}`}>
+           {filtered.length === 0 ? (
+             <div className="text-center py-4 sm:py-8 text-slate-500">
+               <p className="text-xs sm:text-sm">No items found. {query ? "Try a different search." : "Add your first item to get started!"}</p>
+             </div>
+           ) : (
+             filtered.map((i) => (
+               <div key={i.id} className="py-1.5 sm:py-3 flex items-center justify-between gap-2">
+                 <div className="flex items-center gap-1.5 sm:gap-3 min-w-0 flex-1">
+                   <span
+                     className="inline-block w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full flex-shrink-0"
+                     style={{
+                       backgroundColor:
+                         i.status === "fresh" ? "#22c55e" : i.status === "expiring" ? "#fbbf24" : "#ef4444",
+                     }}
+                   />
+                   <span className="font-medium text-xs sm:text-base truncate">{i.name}</span>
+                 </div>
+                 <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
+                   <span className="text-xs text-slate-500">
+                     {i.status === "expired"
+                       ? "expired"
+                       : typeof i.expiresInDays === "number"
+                         ? `${i.expiresInDays}d`
+                         : ""}
+                   </span>
+                   <div className="flex items-center gap-0.5 sm:gap-1">
+                     <button
+                       type="button"
+                       onClick={() => onAddToShoppingList(i)}
+                       disabled={isPending || !selectedHousehold || addingToShoppingList}
+                       className="p-1 sm:p-1.5 text-green-700 hover:bg-green-50 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                       title="Add to shopping list"
+                     >
+                       <svg className="w-3 h-3 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                         <path
+                           strokeLinecap="round"
+                           strokeLinejoin="round"
+                           strokeWidth={2}
+                           d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"
+                         />
+                       </svg>
+                     </button>
+                     <button
+                       type="button"
+                       onClick={() => onEditItem(i)}
+                       disabled={isPending}
+                       className="p-1 sm:p-1.5 text-blue-600 hover:bg-blue-50 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                       title="Edit item"
+                     >
+                       <svg className="w-3 h-3 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                         <path
+                           strokeLinecap="round"
+                           strokeLinejoin="round"
+                           strokeWidth={2}
+                           d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                         />
+                       </svg>
+                     </button>
+                     <button
+                       type="button"
+                       onClick={() => onDeleteClick(i.id)}
+                       disabled={isPending}
+                       className="p-1 sm:p-1.5 text-red-600 hover:bg-red-50 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                       title="Delete item"
+                     >
+                       <svg className="w-3 h-3 sm:w-4 sm:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                         <path
+                           strokeLinecap="round"
+                           strokeLinejoin="round"
+                           strokeWidth={2}
+                           d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                         />
+                       </svg>
+                     </button>
+                   </div>
+                 </div>
+               </div>
+             ))
+           )}
+         </div>
+       )}
+     </>
+   );
 }
 
 export default function DashboardHome() {
@@ -506,132 +506,132 @@ export default function DashboardHome() {
     .sort((a,b) => (a.addedAt > b.addedAt ? -1 : 1))
     .slice(0, 5);
 
-  return (
-    <div className="w-full max-w-6xl mx-auto px-3 sm:px-6 py-4 sm:py-8 grid gap-4 sm:gap-8 relative">
-      {shopToast && (
-        <div
-          className={`fixed bottom-4 left-1/2 -translate-x-1/2 z-50 max-w-md w-[calc(100%-2rem)] px-4 py-3 rounded-lg shadow-lg text-sm ${
-            shopToast.variant === "success"
-              ? "bg-green-700 text-white"
-              : "bg-amber-800 text-white"
-          }`}
-          role="status"
-        >
-          {shopToast.message}
-        </div>
-      )}
-      <header className="text-center grid gap-2 sm:gap-3">
-        <div className="mx-auto">
-          <Image src="/Green_Basket_Icon.png" width={48} height={48} alt="SmartPantry" className="w-12 h-12 sm:w-14 sm:h-14" />
-        </div>
-        <h1 className="text-xl sm:text-3xl font-semibold">SmartPantry</h1>
-        <p className="text-xs sm:text-base text-slate-600 px-2">Welcome back! Here&apos;s a quick look at your pantry.</p>
-        
-        {/* Household Selector */}
-        {households.length > 0 && (
-          <div className="flex items-center justify-center gap-2 mt-2">
-            <label className="text-sm font-medium text-slate-700">Viewing:</label>
-            <select
-              value={selectedHousehold || ""}
-              onChange={(e) => setSelectedHousehold(e.target.value)}
-              className="border border-slate-300 rounded-lg px-4 py-2 text-sm bg-white font-medium text-slate-800 hover:border-green-500 focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none transition-colors"
-              disabled={loading}
-            >
-              {households.map((h) => (
-                <option key={h.id} value={h.id}>
-                  {h.name}
-                </option>
-              ))}
-            </select>
-          </div>
-        )}
-      </header>
+   return (
+     <div className="w-full max-w-6xl mx-auto px-2 sm:px-6 py-2 sm:py-8 grid gap-2 sm:gap-8 relative">
+       {shopToast && (
+         <div
+           className={`fixed bottom-4 left-1/2 -translate-x-1/2 z-50 max-w-md w-[calc(100%-2rem)] px-4 py-3 rounded-lg shadow-lg text-sm ${
+             shopToast.variant === "success"
+               ? "bg-green-700 text-white"
+               : "bg-amber-800 text-white"
+           }`}
+           role="status"
+         >
+           {shopToast.message}
+         </div>
+       )}
+       <header className="text-center grid gap-1 sm:gap-3">
+         <div className="mx-auto">
+           <Image src="/Green_Basket_Icon.png" width={48} height={48} alt="SmartPantry" className="w-10 h-10 sm:w-14 sm:h-14" />
+         </div>
+         <h1 className="text-lg sm:text-3xl font-semibold">SmartPantry</h1>
+         <p className="text-xs sm:text-base text-slate-600 px-2">Welcome back! Here&apos;s a quick look at your pantry.</p>
 
-      <section className="grid gap-3 sm:gap-4 md:grid-cols-3">
-        <div className="card p-4 sm:p-6">
-          <h3 className="font-semibold mb-2 text-sm sm:text-base">Expiring Soon</h3>
-          <ul className="text-slate-700 text-xs sm:text-sm space-y-1">
-            {expiringSoon.map(i => (
-              <li key={i.id} className="flex items-center justify-between">
-                <span className="truncate pr-2">{i.name}</span>
-                <span className="text-slate-400 flex-shrink-0">{i.expiresInDays! >= 0 ? `${i.expiresInDays}d` : "expired"}</span>
-              </li>
-            ))}
-            {expiringSoon.length === 0 && <li className="text-slate-400">Nothing expiring soon 🎉</li>}
-          </ul>
-        </div>
+         {/* Household Selector */}
+         {households.length > 0 && (
+           <div className="flex items-center justify-center gap-2 mt-1 sm:mt-2">
+             <label className="text-xs sm:text-sm font-medium text-slate-700">Viewing:</label>
+             <select
+               value={selectedHousehold || ""}
+               onChange={(e) => setSelectedHousehold(e.target.value)}
+               className="border border-slate-300 rounded-lg px-3 py-1 sm:px-4 sm:py-2 text-xs sm:text-sm bg-white font-medium text-slate-800 hover:border-green-500 focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none transition-colors"
+               disabled={loading}
+             >
+               {households.map((h) => (
+                 <option key={h.id} value={h.id}>
+                   {h.name}
+                 </option>
+               ))}
+             </select>
+           </div>
+         )}
+       </header>
 
-        <div className="card p-4 sm:p-6">
-          <h3 className="font-semibold mb-2 text-sm sm:text-base">Recently Added</h3>
-          <ul className="text-slate-700 text-xs sm:text-sm space-y-1">
-            {recentlyAdded.map(i => (
-              <li key={i.id} className="flex items-center justify-between">
-                <span className="truncate pr-2">{i.name}</span>
-                <span className="text-slate-400 flex-shrink-0 text-xs">{new Date(i.addedAt).toLocaleDateString()}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
+       <section className="grid gap-2 sm:gap-4 md:grid-cols-3">
+         <div className="card p-3 sm:p-6">
+           <h3 className="font-semibold mb-2 text-xs sm:text-base">Expiring Soon</h3>
+           <ul className="text-slate-700 text-xs sm:text-sm space-y-1">
+             {expiringSoon.map(i => (
+               <li key={i.id} className="flex items-center justify-between">
+                 <span className="truncate pr-2">{i.name}</span>
+                 <span className="text-slate-400 flex-shrink-0">{i.expiresInDays! >= 0 ? `${i.expiresInDays}d` : "expired"}</span>
+               </li>
+             ))}
+             {expiringSoon.length === 0 && <li className="text-slate-400">Nothing expiring soon 🎉</li>}
+           </ul>
+         </div>
 
-        <div className="card p-4 sm:p-6">
-          <h3 className="font-semibold mb-2 text-sm sm:text-base">Waste Saved</h3>
-          {wasteSaved ? (
-            <div className="space-y-1">
-              <p className="text-2xl font-bold text-green-600">{wasteSaved.all_time}</p>
-              <p className="text-slate-600 text-xs sm:text-sm">items used before expiration</p>
-              <p className="text-slate-500 text-xs mt-2">{wasteSaved.this_month} this month</p>
-            </div>
-          ) : (
-            <p className="text-slate-600 text-xs sm:text-sm">Loading...</p>
-          )}
-        </div>
-      </section>
+         <div className="card p-3 sm:p-6">
+           <h3 className="font-semibold mb-2 text-xs sm:text-base">Recently Added</h3>
+           <ul className="text-slate-700 text-xs sm:text-sm space-y-1">
+             {recentlyAdded.map(i => (
+               <li key={i.id} className="flex items-center justify-between">
+                 <span className="truncate pr-2">{i.name}</span>
+                 <span className="text-slate-400 flex-shrink-0 text-xs">{new Date(i.addedAt).toLocaleDateString()}</span>
+               </li>
+             ))}
+           </ul>
+         </div>
 
-      <section className="card p-4 sm:p-6">
-        <div className="flex flex-col gap-3 sm:gap-4">
-          <PantryListPanel
-            query={query}
-            setQuery={setQuery}
-            sort={sort}
-            setSort={setSort}
-            loading={loading}
-            error={error}
-            filtered={filtered}
-            listScrollClassName="max-h-[40vh] sm:max-h-none"
-            isPending={isPending}
-            selectedHousehold={selectedHousehold}
-            addingToShoppingList={addingToShoppingList}
-            onAddToShoppingList={handleAddToShoppingList}
-            onEditItem={handleEditItem}
-            onDeleteClick={handleDeleteClick}
-          />
+         <div className="card p-3 sm:p-6">
+           <h3 className="font-semibold mb-2 text-xs sm:text-base">Waste Saved</h3>
+           {wasteSaved ? (
+             <div className="space-y-1">
+               <p className="text-2xl font-bold text-green-600">{wasteSaved.all_time}</p>
+               <p className="text-slate-600 text-xs sm:text-sm">items used before expiration</p>
+               <p className="text-slate-500 text-xs mt-2">{wasteSaved.this_month} this month</p>
+             </div>
+           ) : (
+             <p className="text-slate-600 text-xs sm:text-sm">Loading...</p>
+           )}
+         </div>
+       </section>
 
-          <div className="pt-2 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 sm:gap-0">
-            <button
-              type="button"
-              onClick={() => setShowFullPantryModal(true)}
-              className="text-xs sm:text-sm text-slate-600 hover:underline text-center sm:text-left"
-            >
-              View full pantry →
-            </button>
-            <div className="flex gap-2">
-              <button
-                onClick={() => setShowScanModal(true)}
-                className="px-4 py-2 rounded-full bg-blue-600 text-white text-xs sm:text-sm text-center hover:bg-blue-700 transition-colors focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                disabled={loading || isPending}
-              >
+       <section className="card p-3 sm:p-6">
+         <div className="flex flex-col gap-2 sm:gap-4">
+           <PantryListPanel
+             query={query}
+             setQuery={setQuery}
+             sort={sort}
+             setSort={setSort}
+             loading={loading}
+             error={error}
+             filtered={filtered}
+             listScrollClassName="max-h-[35vh] sm:max-h-none"
+             isPending={isPending}
+             selectedHousehold={selectedHousehold}
+             addingToShoppingList={addingToShoppingList}
+             onAddToShoppingList={handleAddToShoppingList}
+             onEditItem={handleEditItem}
+             onDeleteClick={handleDeleteClick}
+           />
 
-                Scan Receipt
-              </button>
-              <button
-                onClick={() => setShowAddModal(true)}
-                className="px-4 py-2 rounded-full bg-green-600 text-white text-xs sm:text-sm text-center hover:bg-green-700 transition-colors focus:ring-2 focus:ring-green-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                disabled={loading || isPending}
-              >
-                Add Item to Pantry
-              </button>
-            </div>
-          </div>
+           <div className="pt-1 sm:pt-2 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 sm:gap-0">
+             <button
+               type="button"
+               onClick={() => setShowFullPantryModal(true)}
+               className="text-xs sm:text-sm text-slate-600 hover:underline text-center sm:text-left"
+             >
+               View full pantry →
+             </button>
+             <div className="flex gap-2">
+               <button
+                 onClick={() => setShowScanModal(true)}
+                 className="px-3 py-2 sm:px-4 sm:py-2 rounded-full bg-blue-600 text-white text-xs sm:text-sm text-center hover:bg-blue-700 transition-colors focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                 disabled={loading || isPending}
+               >
+
+                 Scan Receipt
+               </button>
+               <button
+                 onClick={() => setShowAddModal(true)}
+                 className="px-3 py-2 sm:px-4 sm:py-2 rounded-full bg-green-600 text-white text-xs sm:text-sm text-center hover:bg-green-700 transition-colors focus:ring-2 focus:ring-green-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                 disabled={loading || isPending}
+               >
+                 Add Item to Pantry
+               </button>
+             </div>
+           </div>
 
           {/* Add Item Modal */}
           <AddItemModal
