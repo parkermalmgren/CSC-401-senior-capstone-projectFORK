@@ -6,7 +6,7 @@
 @tailwind utilities;
 
 :root {
-  --bg: #333;
+  --bg: white;
 }
 
 html, body {
@@ -18,7 +18,7 @@ body {
 }
 
 .card {
-  @apply bg-gray-800 text-white shadow-soft rounded-2xl p-6;
+  @apply bg-white shadow-soft rounded-2xl p-6;
 }
 
 /* Store markers on shopping map (green dots) */
