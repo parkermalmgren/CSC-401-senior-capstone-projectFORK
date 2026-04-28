@@ -23,7 +23,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
-      <body className="min-h-screen bg-transparent antialiased">
+      <body className="min-h-screen bg-gray-800 antialiased">
         {/* Navbar (hidden on landing and login pages) */}
         <ConditionalNavbar />
         {/* Spacer for navbar on pages where it shows */}

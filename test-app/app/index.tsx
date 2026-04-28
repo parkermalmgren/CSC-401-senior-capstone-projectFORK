@@ -42,6 +42,7 @@ export default function Index() {
         domStorageEnabled={true}
         cacheEnabled={false}
         incognito={true}
+        scalesPageToFit={true}
         onLoadStart={() => setIsLoading(true)}
         onLoadEnd={() => setIsLoading(false)}
         onError={(syntheticEvent) => {
