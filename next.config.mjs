@@ -3,6 +3,7 @@ const nextConfig = {
   typedRoutes: true,
   images: {
     remotePatterns: [
+      { protocol: "https", hostname: "www.smartpantryai.com", pathname: "/**" },
       { protocol: "https", hostname: "img.spoonacular.com", pathname: "/**" },
     ],
   },

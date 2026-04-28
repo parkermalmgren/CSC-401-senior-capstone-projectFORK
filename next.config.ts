@@ -1,7 +1,13 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  typedRoutes: true,
+  images: {
+    remotePatterns: [
+      { protocol: "https", hostname: "www.smartpantryai.com", pathname: "/**" },
+      { protocol: "https", hostname: "img.spoonacular.com", pathname: "/**" },
+    ],
+  },
 };
 
 export default nextConfig;
