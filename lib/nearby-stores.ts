@@ -6,9 +6,6 @@ export interface NearbyStore {
   lng: number;
 }
 
-const OVERPASS_URL = "https://overpass-api.de/api/interpreter";
-const RADIUS_M = 5000;
-
 type OsmNode = {
   type: "node";
   id: number;
@@ -31,9 +28,7 @@ export async function fetchNearbyStores(
   lat: number,
   lng: number
 ): Promise<NearbyStore[]> {
-  const r = RADIUS_M;
-  const query = `[out:json][timeout:20];(node(around:${r},${lat},${lng})["shop"~"^(supermarket|grocery|convenience|general|food)$"];way(around:${r},${lat},${lng})["shop"~"^(supermarket|grocery|convenience|general|food)$"];node(around:${r},${lat},${lng})["amenity"="marketplace"];);out center body;`;
-  const url = `${OVERPASS_URL}?data=${encodeURIComponent(query)}`;
+  const url = `/api/stores/nearby?lat=${encodeURIComponent(lat)}&lng=${encodeURIComponent(lng)}`;
   const res = await fetch(url);
   if (!res.ok) throw new Error("Failed to fetch nearby stores");
   const data = (await res.json()) as { elements?: Array<OsmNode | OsmWay> };

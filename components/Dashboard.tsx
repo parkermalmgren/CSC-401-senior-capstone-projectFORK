@@ -40,9 +40,7 @@ export default function Dashboard() {
                   <span className="text-3xl">🛒</span>
                 </div>
                 <h3 className="text-lg font-semibold text-slate-800">Shopping List</h3>
-                <p className="text-sm text-slate-600">
-                  Shared household list, check off items, and find nearby stores on the map
-                </p>
+                <p className="text-sm text-slate-600">View and manage your shopping list</p>
               </div>
             </a>
 

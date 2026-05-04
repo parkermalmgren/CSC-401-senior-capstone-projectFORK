@@ -58,7 +58,7 @@ export default function AboutPage() {
             {/* Recipe Magic */}
             <div className="flex flex-col items-center">
               <div className="bg-white rounded-2xl p-6 shadow-lg w-full h-full flex flex-col mb-6">
-                <h3 className="font-semibold mb-3 text-xl">🧑‍🍳 Recipe Magic</h3>
+                <h3 className="font-semibold mb-3 text-xl">🧑🍳 Recipe Magic</h3>
                 <p className="text-slate-600 text-base flex-grow">
                   Turn what&apos;s in your kitchen into delicious meals with personalized recipe suggestions. Filter by dietary needs or preferences, and discover creative ways to combine ingredients you already have, reducing waste and making cooking easier.
                 </p>

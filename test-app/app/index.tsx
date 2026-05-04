@@ -3,7 +3,6 @@ import { WebView } from 'react-native-webview';
 import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useState } from 'react';
-import { StatusBar } from 'expo-status-bar';
 
 import { WEB_VIEW_URL } from '../constants/Config';
 
@@ -16,14 +15,13 @@ export default function Index() {
   const currentUrl = WEB_VIEW_URL;
 
   return (
-    <View style={[styles.container, { backgroundColor: '#333' }]}>
-      <StatusBar style="light" />
+    <View style={styles.container}>
       {error && (
-        <View style={[styles.errorContainer, { backgroundColor: '#333' }]}>
-          <Text style={[styles.errorTitle, { color: '#f8fafc' }]}>⚠️ Connection Error</Text>
-          <Text style={[styles.errorText, { color: '#94a3b8' }]}>{error}</Text>
-          <Text style={[styles.errorHint, { color: '#64748b' }]}>Make sure you have internet connection</Text>
-          <TouchableOpacity
+        <View style={styles.errorContainer}>
+          <Text style={styles.errorTitle}>⚠️ Connection Error</Text>
+          <Text style={styles.errorText}>{error}</Text>
+          <Text style={styles.errorHint}>Make sure you have internet connection</Text>
+          <TouchableOpacity 
             style={styles.retryButton}
             onPress={() => {
               setError(null);
@@ -42,7 +40,6 @@ export default function Index() {
         domStorageEnabled={true}
         cacheEnabled={false}
         incognito={true}
-        scalesPageToFit={true}
         onLoadStart={() => setIsLoading(true)}
         onLoadEnd={() => setIsLoading(false)}
         onError={(syntheticEvent) => {
@@ -97,7 +94,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: '#333',
+    backgroundColor: '#222222',
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,

@@ -7,10 +7,8 @@ export async function geocodeSearch(
 ): Promise<{ lat: number; lng: number; displayName: string } | null> {
   const q = query.trim();
   if (!q) return null;
-  const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=1`;
-  const res = await fetch(url, {
-    headers: { "User-Agent": "SmartPantry/1.0 (capstone project)" },
-  });
+  const url = `/api/geocode?q=${encodeURIComponent(q)}`;
+  const res = await fetch(url);
   if (!res.ok) return null;
   const data = (await res.json()) as Array<{ lat: string; lon: string; display_name?: string }>;
   const first = data?.[0];

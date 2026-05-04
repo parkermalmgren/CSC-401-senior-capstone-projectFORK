@@ -22,6 +22,17 @@ export default function ReceiptScannerModal({ isOpen, onClose, onItemsAdded }: R
   const [isPolling, setIsPolling] = useState(false);
   const [localIp, setLocalIp] = useState<string | null>(null);
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const [isMobile, setIsMobile] = useState(false);
+
+  // Detect if user is on mobile device (iPhone, Android, etc.)
+  useEffect(() => {
+    const checkMobile = () => {
+      const userAgent = navigator.userAgent || navigator.vendor || (window as any).opera;
+      const mobileRegex = /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i;
+      setIsMobile(mobileRegex.test(userAgent.toLowerCase()));
+    };
+    checkMobile();
+  }, []);
 
   // Get local IP address for mobile access
   useEffect(() => {
@@ -317,10 +328,11 @@ export default function ReceiptScannerModal({ isOpen, onClose, onItemsAdded }: R
                 <div className="text-4xl">📄</div>
                 <p className="text-sm text-slate-600">Upload a receipt image</p>
                 <label className="inline-block px-4 py-2 bg-blue-600 text-white rounded-lg cursor-pointer hover:bg-blue-700 transition-colors">
-                  Choose File
+                  {isMobile ? "Take Photo" : "Choose File"}
                   <input
                     type="file"
                     accept="image/*"
+                    capture={isMobile ? "environment" : undefined}
                     onChange={handleFileSelect}
                     className="hidden"
                   />
@@ -329,7 +341,8 @@ export default function ReceiptScannerModal({ isOpen, onClose, onItemsAdded }: R
             )}
           </div>
 
-          {/* QR Code Section */}
+          {/* QR Code Section - Only show on desktop */}
+          {!isMobile && (
           <div className="border border-slate-300 rounded-lg p-6 bg-slate-50">
             <div className="text-center space-y-4">
               <div className="text-2xl">📷</div>
@@ -392,6 +405,7 @@ export default function ReceiptScannerModal({ isOpen, onClose, onItemsAdded }: R
               )}
             </div>
           </div>
+          )}
 
         </div>
 

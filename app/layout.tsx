@@ -27,8 +27,7 @@ export default function RootLayout({
         {/* Navbar (hidden on landing and login pages) */}
         <ConditionalNavbar />
         {/* Spacer for navbar on pages where it shows */}
-        <div className="pt-16">{children}</div>
-      </body>
+<div className="pt-16 min-h-screen bg-brand-bg">{children}</div>      </body>
     </html>
   );
 }

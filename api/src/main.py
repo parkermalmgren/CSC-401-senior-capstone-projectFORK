@@ -17,6 +17,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Tuple, Any, Union
 from supabase import create_client, Client
+from supabase.lib.client_options import SyncClientOptions
 from fastapi import UploadFile, File
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
@@ -45,8 +46,14 @@ if not SUPABASE_SERVICE_KEY:
     raise ValueError("SUPABASE_SERVICE_ROLE_KEY environment variable is required")
 
 
-# Initialize Supabase client
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_SERVICE_KEY)
+supabase: Client = create_client(
+    SUPABASE_URL,
+    SUPABASE_SERVICE_KEY,
+    options=SyncClientOptions(
+        postgrest_client_timeout=15.0,
+        storage_client_timeout=15.0,
+    ),
+)
 
 # Initialize the Openai client w/ key
 from openai import OpenAI
@@ -279,8 +286,11 @@ allowed_origins = [
     if origin.strip()
 ]
 
+# Ensure NODE_ENV defaults to development for local testing
+NODE_ENV = os.getenv("NODE_ENV", "development")
+
 # For development, also allow common localhost ports and local network IPs
-if os.getenv("NODE_ENV", "development") == "development":
+if NODE_ENV == "development":
     common_ports = ["3000", "3001", "3002", "5173", "5174"]  # Common dev server ports
     for port in common_ports:
         origins_to_add = [
@@ -301,7 +311,7 @@ if os.getenv("NODE_ENV", "development") == "development":
     logger.info("Development mode: Allowing all local network origins for mobile access")
 
 # In development, allow local network IPs using regex pattern
-if os.getenv("NODE_ENV", "development") == "development":
+if NODE_ENV == "development":
     # Regex pattern to match local network IPs (192.168.x.x, 10.x.x.x, 172.16-31.x.x, localhost)
     local_network_regex = r"http://(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.(1[6-9]|2[0-9]|3[0-1])\.\d+\.\d+)(:\d+)?"
     
@@ -2528,6 +2538,94 @@ async def search_food(
             return foods
     except Exception as e:
         logger.error(f"Error searching USDA API: {str(e)}")
+        raise HTTPException(status_code=500, detail="An internal error occurred. Please try again.")
+
+
+@app.get("/api/nutrition/{item_name}")
+@limiter.limit("60/minute")
+async def get_nutrition_facts(
+    item_name: str,
+    request: Request,
+    user_id: Optional[str] = Depends(get_user_id),
+):
+    """Get nutritional facts for a food item from USDA FoodData Central"""
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    
+    if not USDA_API_KEY:
+        raise HTTPException(status_code=500, detail="USDA API key not configured")
+    
+    item_name = item_name.strip()
+    if not item_name:
+        raise HTTPException(status_code=400, detail="Item name is required")
+    
+    logger.info(f"Fetching nutrition facts for: {item_name}")
+    
+    try:
+        # Search for the food item
+        search_url = f"https://api.nal.usda.gov/fdc/v1/foods/search?query={item_name}&pageSize=1&api_key={USDA_API_KEY}"
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            search_response = await client.get(search_url)
+            search_data = search_response.json()
+            
+            foods = search_data.get("foods", [])
+            if not foods:
+                logger.warning(f"No nutrition data found for: {item_name}")
+                raise HTTPException(status_code=404, detail="No nutrition data found for this item")
+            
+            food = foods[0]
+            fdc_id = food.get("fdcId")
+            
+            # Get detailed nutrition info
+            detail_url = f"https://api.nal.usda.gov/fdc/v1/food/{fdc_id}?api_key={USDA_API_KEY}"
+            detail_response = await client.get(detail_url)
+            detail_data = detail_response.json()
+            
+            # Extract nutrition data
+            label_nutrients = detail_data.get("labelNutrients", {})
+            food_nutrients = detail_data.get("foodNutrients", [])
+            
+            # Helper function to get nutrient value with multiple name variations
+            def get_nutrient_value(nutrient_names: list) -> Optional[float]:
+                for nutrient in food_nutrients:
+                    name = nutrient.get("nutrient", {}).get("name", "").lower()
+                    for search_name in nutrient_names:
+                        if search_name.lower() in name or name in search_name.lower():
+                            amount = nutrient.get("amount")
+                            if amount is not None and amount > 0:
+                                return amount
+                return None
+            
+            # Build nutrition response with proper fallbacks and more nutrients
+            nutrition_data = {
+                "name": detail_data.get("description", item_name),
+                "calories": label_nutrients.get("calories", {}).get("value") or get_nutrient_value(["Energy"]),
+                "protein": label_nutrients.get("protein", {}).get("value") or get_nutrient_value(["Protein"]),
+                "carbs": label_nutrients.get("carbohydrates", {}).get("value") or get_nutrient_value(["Carbohydrate, by difference", "Carbohydrate"]),
+                "fat": label_nutrients.get("fat", {}).get("value") or get_nutrient_value(["Total lipid (fat)", "Fat"]),
+                "saturatedFat": get_nutrient_value(["Fatty acids, total saturated", "Saturated fat"]),
+                "transFat": get_nutrient_value(["Fatty acids, total trans", "Trans fat"]),
+                "cholesterol": get_nutrient_value(["Cholesterol"]),
+                "sodium": get_nutrient_value(["Sodium, Na", "Sodium"]),
+                "potassium": get_nutrient_value(["Potassium, K", "Potassium"]),
+                "fiber": label_nutrients.get("fiber", {}).get("value") or get_nutrient_value(["Fiber, total dietary", "Dietary fiber"]),
+                "sugar": label_nutrients.get("sugars", {}).get("value") or get_nutrient_value(["Sugars, total including NLEA", "Sugars, total", "Total sugars"]),
+                "addedSugar": get_nutrient_value(["Sugars, added", "Added sugars"]),
+                "vitaminD": get_nutrient_value(["Vitamin D (D2 + D3)", "Vitamin D"]),
+                "calcium": get_nutrient_value(["Calcium, Ca", "Calcium"]),
+                "iron": get_nutrient_value(["Iron, Fe", "Iron"]),
+                "vitaminA": get_nutrient_value(["Vitamin A, RAE", "Vitamin A"]),
+                "vitaminC": get_nutrient_value(["Vitamin C, total ascorbic acid", "Vitamin C"]),
+                "servingSize": detail_data.get("servingSize", "") + " " + detail_data.get("servingSizeUnit", "") if detail_data.get("servingSize") else "100g"
+            }
+            
+            logger.info(f"Successfully fetched nutrition facts for: {item_name}")
+            return nutrition_data
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching nutrition facts for {item_name}: {str(e)}")
         raise HTTPException(status_code=500, detail="An internal error occurred. Please try again.")
 
 

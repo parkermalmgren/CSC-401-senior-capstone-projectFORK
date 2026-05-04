@@ -113,6 +113,17 @@ python -m uvicorn src.main:app --reload
 ```
 Backend will run on http://localhost:8000
 
+### Mobile Development (Local Network)
+If you are testing on a mobile device via Expo, you need to ensure both your computer and phone are on the same Wi-Fi. 
+Your computer's local IP must be correctly configured in the `.env` and `test-app/constants/Config.ts` files.
+
+#### Automatic IP Update
+You can run this script whenever you change Wi-Fi networks (e.g., at home vs at school):
+```bash
+python scripts/update_ip.py
+```
+This will automatically detect your current IP and update all necessary configuration files.
+
 ### 5. API Keys Setup
 
 **Supabase:**
