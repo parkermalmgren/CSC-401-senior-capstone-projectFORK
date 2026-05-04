@@ -38,6 +38,7 @@ export default function Index() {
         startInLoadingState={true}
         javaScriptEnabled={true}
         domStorageEnabled={true}
+        geolocationEnabled={true}
         cacheEnabled={false}
         incognito={true}
         onLoadStart={() => setIsLoading(true)}
