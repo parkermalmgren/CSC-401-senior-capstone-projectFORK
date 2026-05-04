@@ -222,54 +222,75 @@ export default function ShoppingPageContent() {
     });
   };
 
-  const useMyLocation = () => {
-    setLocationError(null);
-    setSearchError(null);
-    setLocationLoading(true);
-    if (!navigator.geolocation) {
-      setLocationError("Geolocation is not supported by your browser.");
-      setLocationLoading(false);
-      return;
-    }
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        const { latitude, longitude, accuracy } = position.coords;
-        const coords = { lat: latitude, lng: longitude };
-        setUserLocation(coords);
-        setMapCenter(coords);
-        setLocationLoading(false);
-        
-        // Show accuracy info to user
-        if (accuracy > 1000) {
-          setLocationError(`Location found but accuracy is low (±${Math.round(accuracy)}m). Results may not be precise.`);
-        }
-      },
-      (error) => {
-        let errorMsg = "Could not get your location. ";
-        switch (error.code) {
-          case error.PERMISSION_DENIED:
-            errorMsg += "Location access was denied. Please enable location permissions and try again.";
-            break;
-          case error.POSITION_UNAVAILABLE:
-            errorMsg += "Location information is unavailable. Try searching for your city instead.";
-            break;
-          case error.TIMEOUT:
-            errorMsg += "Location request timed out. Try again or search for your city.";
-            break;
-          default:
-            errorMsg += "Try searching for your city instead.";
-            break;
-        }
-        setLocationError(errorMsg);
-        setLocationLoading(false);
-      },
-      { 
-        enableHighAccuracy: true, 
-        timeout: 15000, // Increased timeout
-        maximumAge: 300000 // 5 minutes cache
-      }
-    );
-  };
+   const useMyLocation = () => {
+     setLocationError(null);
+     setSearchError(null);
+     setLocationLoading(true);
+
+     // Debug info
+     console.log('=== Geolocation Debug ===');
+     console.log('Protocol:', window.location.protocol);
+     console.log('Hostname:', window.location.hostname);
+     console.log('Full URL:', window.location.href);
+     console.log('Secure Context:', window.isSecureContext);
+     console.log('Geolocation available:', !!navigator.geolocation);
+
+     // Check if geolocation is supported
+     if (!navigator.geolocation) {
+       setLocationError("Geolocation is not supported by your browser.");
+       setLocationLoading(false);
+       return;
+     }
+
+     // Check if the connection is secure (HTTPS or localhost)
+     if (!window.isSecureContext && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+       setLocationError("Location access requires a secure connection (HTTPS). Please ensure you're accessing the site via HTTPS, or use localhost for local development. You can also search for your location instead.");
+       setLocationLoading(false);
+       return;
+     }
+
+     console.log('Requesting geolocation...');
+     navigator.geolocation.getCurrentPosition(
+       (position) => {
+         console.log('Geolocation success:', position);
+         const { latitude, longitude, accuracy } = position.coords;
+         const coords = { lat: latitude, lng: longitude };
+         setUserLocation(coords);
+         setMapCenter(coords);
+         setLocationLoading(false);
+
+         // Show accuracy info to user
+         if (accuracy > 1000) {
+           setLocationError(`Location found but accuracy is low (±${Math.round(accuracy)}m). Results may not be precise.`);
+         }
+       },
+       (error) => {
+         console.log('Geolocation error:', error);
+         let errorMsg = "Could not get your location. ";
+         switch (error.code) {
+           case error.PERMISSION_DENIED:
+             errorMsg += "Location permission denied. You should see a browser prompt asking for location access. If not, check: 1) You're on HTTPS or localhost, 2) Browser allows location access, 3) Clear browser cache and try again. You can also search for your location instead.";
+             break;
+           case error.POSITION_UNAVAILABLE:
+             errorMsg += "Location information is unavailable. Try searching for your city instead.";
+             break;
+           case error.TIMEOUT:
+             errorMsg += "Location request timed out. Try again or search for your city.";
+             break;
+           default:
+             errorMsg += "Try searching for your city instead.";
+             break;
+         }
+         setLocationError(errorMsg);
+         setLocationLoading(false);
+       },
+       {
+         enableHighAccuracy: true,
+         timeout: 15000,
+         maximumAge: 300000
+       }
+     );
+   };
 
   const searchStores = async () => {
     const query = searchQuery.trim() || "grocery stores";
