@@ -140,7 +140,7 @@ export default function DashboardHome() {
 
   // Handle nutrition facts view
   const handleViewNutrition = (item: Item) => {
-    setSelectedItemForNutrition({ name: item.name, id: item.id, quantity: item.quantity });
+    setSelectedItemForNutrition({ name: item.name, id: item.id, quantity: item.quantity || 1 });
     setShowNutritionModal(true);
   };
   const handleEditItem = async (item: Item) => {
