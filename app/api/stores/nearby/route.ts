@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 const OVERPASS_URL = "https://overpass-api.de/api/interpreter";
-const RADIUS_M = 5000;
+const RADIUS_M = 3000; // Reduced to 3km for better results
 
 export async function GET(req: NextRequest) {
   const lat = Number(req.nextUrl.searchParams.get("lat"));
@@ -14,7 +14,16 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  const query = `[out:json][timeout:20];(node(around:${RADIUS_M},${lat},${lng})["shop"~"^(supermarket|grocery|convenience|general|food)$"];way(around:${RADIUS_M},${lat},${lng})["shop"~"^(supermarket|grocery|convenience|general|food)$"];node(around:${RADIUS_M},${lat},${lng})["amenity"="marketplace"];);out center body;`;
+  // Expanded query to include more store types and brands
+  const query = `[out:json][timeout:25];
+    (
+      node(around:${RADIUS_M},${lat},${lng})["shop"~"^(supermarket|grocery|convenience|general|food|department_store|hypermarket)$"];
+      way(around:${RADIUS_M},${lat},${lng})["shop"~"^(supermarket|grocery|convenience|general|food|department_store|hypermarket)$"];
+      node(around:${RADIUS_M},${lat},${lng})["amenity"="marketplace"];
+      node(around:${RADIUS_M},${lat},${lng})["name"~"walmart|target|kroger|safeway|whole foods|trader joe|costco|sam's club|aldi|publix|wegmans|giant|stop & shop|food lion|harris teeter|meijer|heb|king soopers|fred meyer|ralphs|vons|albertsons|winn-dixie|bi-lo|piggly wiggly",i];
+      way(around:${RADIUS_M},${lat},${lng})["name"~"walmart|target|kroger|safeway|whole foods|trader joe|costco|sam's club|aldi|publix|wegmans|giant|stop & shop|food lion|harris teeter|meijer|heb|king soopers|fred meyer|ralphs|vons|albertsons|winn-dixie|bi-lo|piggly wiggly",i];
+    );
+    out center body;`;
   const url = `${OVERPASS_URL}?data=${encodeURIComponent(query)}`;
 
   try {

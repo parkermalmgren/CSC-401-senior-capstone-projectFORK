@@ -233,17 +233,41 @@ export default function ShoppingPageContent() {
     }
     navigator.geolocation.getCurrentPosition(
       (position) => {
-        const { latitude, longitude } = position.coords;
+        const { latitude, longitude, accuracy } = position.coords;
         const coords = { lat: latitude, lng: longitude };
         setUserLocation(coords);
         setMapCenter(coords);
         setLocationLoading(false);
+        
+        // Show accuracy info to user
+        if (accuracy > 1000) {
+          setLocationError(`Location found but accuracy is low (±${Math.round(accuracy)}m). Results may not be precise.`);
+        }
       },
-      () => {
-        setLocationError("Could not get your location. Check permissions or try Search Stores.");
+      (error) => {
+        let errorMsg = "Could not get your location. ";
+        switch (error.code) {
+          case error.PERMISSION_DENIED:
+            errorMsg += "Location access was denied. Please enable location permissions and try again.";
+            break;
+          case error.POSITION_UNAVAILABLE:
+            errorMsg += "Location information is unavailable. Try searching for your city instead.";
+            break;
+          case error.TIMEOUT:
+            errorMsg += "Location request timed out. Try again or search for your city.";
+            break;
+          default:
+            errorMsg += "Try searching for your city instead.";
+            break;
+        }
+        setLocationError(errorMsg);
         setLocationLoading(false);
       },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
+      { 
+        enableHighAccuracy: true, 
+        timeout: 15000, // Increased timeout
+        maximumAge: 300000 // 5 minutes cache
+      }
     );
   };
 
@@ -489,9 +513,15 @@ export default function ShoppingPageContent() {
                   <p className="text-sm text-amber-700 py-2">{storesError}</p>
                 )}
                 {mapCenter && !storesLoading && !storesError && nearbyStores.length === 0 && (
-                  <p className="text-sm text-slate-500 py-4 text-center">
-                    No grocery stores found within 5 km. Try another area.
-                  </p>
+                  <div className="text-sm text-slate-500 py-4 text-center space-y-2">
+                    <p>No grocery stores found within 3 km.</p>
+                    <p className="text-xs">Try:</p>
+                    <ul className="text-xs space-y-1">
+                      <li>• Searching for a different area</li>
+                      <li>• Looking for "grocery stores near [your city]"</li>
+                      <li>• Some rural areas may have limited data</li>
+                    </ul>
+                  </div>
                 )}
                 {mapCenter && !storesLoading && nearbyStores.length > 0 && (
                   <ul className="space-y-1">
