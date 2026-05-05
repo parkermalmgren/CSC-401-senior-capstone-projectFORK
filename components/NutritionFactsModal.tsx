@@ -50,11 +50,15 @@ export default function NutritionFactsModal({ isOpen, onClose, itemName, itemId,
   const fetchNutritionFacts = async () => {
     setLoading(true);
     setError(null);
+    console.log('itemId:', itemId);
+    console.log('itemName:', itemName);
+    console.log('URL:', `${API_BASE_URL}/api/nutrition/${itemId}`);
+
 
     try {
       const token = await getAuthToken();
       const response = await fetch(
-        `${API_BASE_URL}/api/nutrition/${encodeURIComponent(itemName)}`,
+        `${API_BASE_URL}/api/nutrition/${encodeURIComponent(itemId)}`,
         {
           headers: {
             'Authorization': `Bearer ${token}`

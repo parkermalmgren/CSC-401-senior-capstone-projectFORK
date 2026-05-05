@@ -3488,6 +3488,39 @@ def join_household(
         logger.error(f"Error joining household: {str(e)}")
         raise HTTPException(status_code=500, detail="An internal error occurred. Please try again.")
 
+@app.post("/api/households/leave/{household_id}")
+def leave_household(
+    household_id: str,
+    user_id: Optional[str] = Depends(get_user_id)
+):
+    """Leave a household"""
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    
+    try:
+        # Check if user is a member
+        member_check = supabase.table("relation_househould").select("*").eq("user_id", user_id).eq("household_id", household_id).execute()
+        if not member_check.data:
+            raise HTTPException(status_code=404, detail="Not a member of this household")
+        
+        # Remove from household
+        supabase.table("relation_househould").delete().eq("user_id", user_id).eq("household_id", household_id).execute()
+        
+        # Check if household is now empty
+        remaining = supabase.table("relation_househould").select("user_id").eq("household_id", household_id).execute()
+        if not remaining.data:
+            # Optionally delete the household if no one is left
+            supabase.table("household").delete().eq("id", household_id).execute()
+            logger.info(f"Household {household_id} deleted as it has no more members")
+            
+        logger.info(f"User {user_id} left household {household_id}")
+        return {"message": "Successfully left household"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error leaving household: {str(e)}")
+        raise HTTPException(status_code=500, detail="An internal error occurred. Please try again.")
+
 @app.get("/api/households/{household_id}/members")
 def get_household_members(
     household_id: str,
@@ -3505,7 +3538,17 @@ def get_household_members(
         
         # Get all members
         members_response = supabase.table("relation_househould").select("user_id, profiles(name, email)").eq("household_id", household_id).execute()
-        members = [{"id": m["user_id"], "name": m["profiles"]["name"], "email": m["profiles"]["email"]} for m in members_response.data if m.get("profiles")]
+        members = []
+        for m in members_response.data:
+            if m.get("profiles"):
+                members.append({"id": m["user_id"], "name": m["profiles"]["name"], "email": m["profiles"]["email"]})
+            else:
+                # Fallback if profiles link fails
+                p_resp = supabase.table("profiles").select("name, email").eq("id", m["user_id"]).execute()
+                if p_resp.data:
+                    members.append({"id": m["user_id"], "name": p_resp.data[0]["name"], "email": p_resp.data[0]["email"]})
+                else:
+                    members.append({"id": m["user_id"], "name": "Unknown User", "email": "N/A"})
         return {"members": members}
     except HTTPException:
         raise

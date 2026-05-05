@@ -29,6 +29,7 @@ export default function AccountSettings() {
   const [households, setHouseholds] = useState<any[]>([]);
   const [joinHouseholdId, setJoinHouseholdId] = useState("");
   const [joiningHousehold, setJoiningHousehold] = useState(false);
+  const [leavingHousehold, setLeavingHousehold] = useState<string | null>(null);
   const [selectedHouseholdForEdit, setSelectedHouseholdForEdit] = useState<string | null>(null);
   const [householdMembers, setHouseholdMembers] = useState<any[]>([]);
   const [editingHouseholdName, setEditingHouseholdName] = useState("");
@@ -134,6 +135,36 @@ export default function AccountSettings() {
       }
     } catch (err) {
       console.error('Failed to load household members:', err);
+    }
+  };
+
+  const handleLeaveHousehold = async (householdId: string) => {
+    if (!confirm('Are you sure you want to leave this household?')) return;
+    
+    setLeavingHousehold(householdId);
+    setError(null);
+    setSuccess(null);
+    
+    try {
+      const token = await getAuthToken();
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000'}/api/households/leave/${householdId}`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.detail || 'Failed to leave household');
+      }
+      
+      setSuccess('Successfully left household');
+      setSelectedHouseholdForEdit(null);
+      await loadHouseholds();
+      setTimeout(() => setSuccess(null), 3000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to leave household');
+    } finally {
+      setLeavingHousehold(null);
     }
   };
   
@@ -528,16 +559,30 @@ export default function AccountSettings() {
                   </div>
                   
                   {/* Show members when managing */}
-                  {selectedHouseholdForEdit === household.id && householdMembers.length > 0 && (
+                  {selectedHouseholdForEdit === household.id && (
                     <div className="mt-3 pt-3 border-t">
-                      <h4 className="text-sm font-medium mb-2">Members:</h4>
-                      <ul className="space-y-1">
-                        {householdMembers.map((member) => (
-                          <li key={member.id} className="text-sm text-gray-600">
-                            {member.name} ({member.email})
-                          </li>
-                        ))}
-                      </ul>
+                      <div className="flex justify-between items-center mb-2">
+                        <h4 className="text-sm font-medium">Members:</h4>
+                        <button
+                          onClick={() => handleLeaveHousehold(household.id)}
+                          disabled={leavingHousehold === household.id}
+                          className="text-xs text-red-600 hover:text-red-800 font-medium disabled:opacity-50"
+                        >
+                          {leavingHousehold === household.id ? "Leaving..." : "Leave Household"}
+                        </button>
+                      </div>
+                      {householdMembers.length > 0 ? (
+                        <ul className="space-y-1">
+                          {householdMembers.map((member) => (
+                            <li key={member.id} className="text-sm text-gray-600">
+                              {member.name} ({member.email})
+                              {profile?.id === member.id && <span className="ml-2 text-xs text-gray-400 font-normal">(You)</span>}
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p className="text-xs text-gray-500 italic">No members found or loading...</p>
+                      )}
                     </div>
                   )}
                 </div>

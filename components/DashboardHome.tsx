@@ -20,6 +20,7 @@ import { useOptimisticItems } from "@/lib/hooks/useOptimisticItems";
 import AddItemModal from "./AddItemModal";
 import EditItemModal from "./EditItemModal";
 import ReceiptScannerModal from "./ReceiptScannerModal";
+import NutritionFactsModal from "./NutritionFactsModal";
 
 type Item = PantryItem;
 
@@ -47,6 +48,7 @@ function PantryListPanel({
   onAddToShoppingList,
   onEditItem,
   onDeleteClick,
+  onViewNutrition,
 }: {
   query: string;
   setQuery: (q: string) => void;
@@ -62,6 +64,7 @@ function PantryListPanel({
   onAddToShoppingList: (i: Item) => void;
   onEditItem: (i: Item) => void;
   onDeleteClick: (id: string) => void;
+  onViewNutrition: (i: Item) => void;
 }) {
   return (
     <>
@@ -130,7 +133,14 @@ function PantryListPanel({
                         i.status === "fresh" ? "#22c55e" : i.status === "expiring" ? "#fbbf24" : "#ef4444",
                     }}
                   />
-                  <span className="font-medium text-sm sm:text-base truncate">{i.name}</span>
+                  <button
+                    type="button"
+                    onClick={() => onViewNutrition(i)}
+                    className="font-medium text-sm sm:text-base truncate text-left hover:text-green-700 hover:underline transition-colors"
+                    title="View nutrition facts"
+                  >
+                    {i.name}
+                  </button>
                 </div>
                 <div className="flex items-center gap-2 flex-shrink-0">
                   <span className="text-xs text-slate-500">
@@ -218,6 +228,8 @@ export default function DashboardHome() {
   const [shopToast, setShopToast] = useState<{ message: string; variant: "success" | "error" } | null>(null);
   const [addingToShoppingList, setAddingToShoppingList] = useState(false);
   const [showFullPantryModal, setShowFullPantryModal] = useState(false);
+  const [showNutritionModal, setShowNutritionModal] = useState(false);
+  const [selectedItemForNutrition, setSelectedItemForNutrition] = useState<{ name: string; id: string; quantity: number } | null>(null);
   const backfillGenerationRef = useRef(0);
 
   const backfillMissingExpirations = useCallback(async (backendItems: BackendItem[]) => {
@@ -225,7 +237,7 @@ export default function DashboardHome() {
     if (missing.length === 0) return;
 
     const gen = ++backfillGenerationRef.current;
-    const rateDelayMs = 1100; // stay under suggest-expiration 60/min per IP
+    const rateDelayMs = 1100;
     const sleep = () => new Promise((r) => setTimeout(r, rateDelayMs));
 
     const validStorage = (s: string | undefined): "pantry" | "fridge" | "freezer" =>
@@ -284,7 +296,6 @@ export default function DashboardHome() {
     }
   }, []);
 
-  // Fetch households
   const fetchHouseholds = async () => {
     try {
       const token = await getAuthToken();
@@ -303,19 +314,16 @@ export default function DashboardHome() {
     }
   };
 
-  // Fetch items from API
   const fetchItems = async () => {
     try {
       setLoading(true);
       setError(null);
-      // Get all items with backend filtering/sorting
       const response = await getItems({
         sort_by: sort === "expires" ? "expiration_date" : "created_at",
         sort_order: "desc",
         household_id: selectedHousehold || undefined,
       });
 
-      // Ensure response has items array
       if (response && response.items && Array.isArray(response.items)) {
         const frontendItems = response.items.map(backendItemToFrontend);
         setItems(frontendItems);
@@ -323,12 +331,12 @@ export default function DashboardHome() {
       } else {
         console.error("Unexpected response format:", response);
         setError("Unexpected response format from API");
-        setItems([]); // Set empty array as fallback
+        setItems([]);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load items");
       console.error("Error fetching items:", err);
-      setItems([]); // Set empty array on error
+      setItems([]);
     } finally {
       setLoading(false);
     }
@@ -344,7 +352,6 @@ export default function DashboardHome() {
     }
   }, [sort, selectedHousehold]);
 
-  // Fetch waste saved statistics
   const fetchWasteSaved = async () => {
     try {
       const stats = await getWasteSaved();
@@ -354,7 +361,6 @@ export default function DashboardHome() {
         all_time: stats.all_time
       });
     } catch {
-      // Backend may 500 if deleted_items is missing or misconfigured; keep card usable
       setWasteSaved({ items_saved: 0, this_month: 0, all_time: 0 });
     }
   };
@@ -363,7 +369,6 @@ export default function DashboardHome() {
     fetchWasteSaved();
   }, []);
 
-  // Listen for refresh events (from optimistic updates)
   useEffect(() => {
     const handleRefresh = () => {
       fetchItems();
@@ -372,7 +377,6 @@ export default function DashboardHome() {
     return () => window.removeEventListener("items-refresh", handleRefresh);
   }, [sort]);
 
-  // Set up optimistic update hooks
   const {
     optimisticCreate,
     optimisticUpdate,
@@ -381,11 +385,15 @@ export default function DashboardHome() {
     pendingId,
   } = useOptimisticItems(items, setItems, fetchItems);
 
-  // Handle edit item
+  // Handle nutrition facts view
+  const handleViewNutrition = (item: Item) => {
+    setSelectedItemForNutrition({ name: item.name, id: item.id, quantity: item.quantity || 1 });
+    setShowNutritionModal(true);
+  };
+
   const handleEditItem = async (item: Item) => {
     try {
       setShowFullPantryModal(false);
-      // Fetch full item data from API
       const fullItem = await getItem(item.id);
       setEditingItem(fullItem);
       setShowEditModal(true);
@@ -395,7 +403,6 @@ export default function DashboardHome() {
     }
   };
 
-  // Handle update item
   const handleUpdateItem = async (itemId: string, itemData: {
     name?: string;
     quantity?: number;
@@ -408,11 +415,10 @@ export default function DashboardHome() {
       setShowEditModal(false);
       setEditingItem(null);
     } catch (err) {
-      throw err; // Error is handled in EditItemModal
+      throw err;
     }
   };
 
-  // Handle delete item
   const handleDeleteClick = (itemId: string) => {
     setDeletingItemId(itemId);
     setShowDeleteConfirm(true);
@@ -425,7 +431,6 @@ export default function DashboardHome() {
       await optimisticDelete(deletingItemId);
       setShowDeleteConfirm(false);
       setDeletingItemId(null);
-      // Refresh waste saved stats after deletion
       fetchWasteSaved();
     } catch (err) {
       console.error("Error deleting item:", err);
@@ -446,7 +451,6 @@ export default function DashboardHome() {
     if (addingToShoppingList) return;
     setAddingToShoppingList(true);
     try {
-      // Do not copy pantry inventory quantity — that is "how many you have", not "how many to buy".
       await createShoppingListItem({ name: i.name, quantity: null }, selectedHousehold);
       setShopToast({ message: `Added "${i.name}" to your shopping list`, variant: "success" });
     } catch (err) {
@@ -474,12 +478,7 @@ export default function DashboardHome() {
     return () => window.removeEventListener("keydown", onKey);
   }, [showFullPantryModal]);
 
-  // Expose optimistic functions (can be used by child components or buttons)
-  // For now, these are available but not used in this component
-  // Components that need to create/update/delete can use these
   useEffect(() => {
-    // Store optimistic functions in a way that child components can access them
-    // This is a simple pattern - in a more complex app, you might use Context API
     (window as any).__optimisticItemsAPI = {
       create: optimisticCreate,
       update: optimisticUpdate,
@@ -527,7 +526,6 @@ export default function DashboardHome() {
         <h1 className="text-xl sm:text-3xl font-semibold">SmartPantry</h1>
         <p className="text-xs sm:text-base text-slate-600 px-2">Welcome back! Here&apos;s a quick look at your pantry.</p>
 
-        {/* Household Selector */}
         {households.length > 0 && (
           <div className="flex items-center justify-center gap-2 mt-2">
             <label className="text-sm font-medium text-slate-700">Viewing:</label>
@@ -604,6 +602,7 @@ export default function DashboardHome() {
             onAddToShoppingList={handleAddToShoppingList}
             onEditItem={handleEditItem}
             onDeleteClick={handleDeleteClick}
+            onViewNutrition={handleViewNutrition}
           />
 
           <div className="pt-2 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 sm:gap-0">
@@ -620,7 +619,6 @@ export default function DashboardHome() {
                 className="px-4 py-2 rounded-full bg-blue-600 text-white text-xs sm:text-sm text-center hover:bg-blue-700 transition-colors focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 disabled={loading || isPending}
               >
-
                 Scan Receipt
               </button>
               <button
@@ -633,7 +631,6 @@ export default function DashboardHome() {
             </div>
           </div>
 
-          {/* Add Item Modal */}
           <AddItemModal
             isOpen={showAddModal}
             onClose={() => setShowAddModal(false)}
@@ -646,26 +643,21 @@ export default function DashboardHome() {
                   storage_type: itemData.storage_type,
                   is_opened: itemData.is_opened,
                 });
-                // Modal will close on success (handled in AddItemModal)
               } catch (err) {
-                // Error is handled in AddItemModal
                 throw err;
               }
             }}
             isPending={isPending}
           />
 
-          {/* Receipt Scanner Modal */}
           <ReceiptScannerModal
             isOpen={showScanModal}
             onClose={() => setShowScanModal(false)}
             onItemsAdded={() => {
-              // Refresh items list after scanning
               fetchItems();
             }}
           />
 
-          {/* Edit Item Modal */}
           <EditItemModal
             isOpen={showEditModal}
             onClose={() => {
@@ -677,7 +669,20 @@ export default function DashboardHome() {
             isPending={isPending}
           />
 
-          {/* Delete Confirmation Dialog */}
+          {/* Nutrition Facts Modal */}
+          {selectedItemForNutrition && (
+            <NutritionFactsModal
+              isOpen={showNutritionModal}
+              onClose={() => {
+                setShowNutritionModal(false);
+                setSelectedItemForNutrition(null);
+              }}
+              itemName={selectedItemForNutrition.name}
+              itemId={selectedItemForNutrition.id}
+              quantity={selectedItemForNutrition.quantity}
+            />
+          )}
+
           {showFullPantryModal && (
             <div
               className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4"
@@ -722,6 +727,7 @@ export default function DashboardHome() {
                     onAddToShoppingList={handleAddToShoppingList}
                     onEditItem={handleEditItem}
                     onDeleteClick={handleDeleteClick}
+                    onViewNutrition={handleViewNutrition}
                   />
                 </div>
                 <div className="flex flex-col-reverse sm:flex-row sm:justify-end gap-2 px-4 py-3 border-t border-slate-100 shrink-0 bg-slate-50/80">

@@ -316,15 +316,15 @@ export default function AddItemModal({ isOpen, onClose, onCreate, isPending = fa
       onClick={handleClose}
     >
       <div
-        className="bg-brand-card rounded-lg shadow-xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto border border-gray-800"
+        className="bg-white rounded-lg shadow-xl w-full max-w-md p-6 max-h-[90vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between mb-6">
-          <h2 className="text-xl font-semibold text-brand-text">Add Item to Pantry</h2>
+          <h2 className="text-xl font-semibold text-gray-800">Add Item to Pantry</h2>
           <button
             onClick={handleClose}
             disabled={submitting || isPending}
-            className="text-gray-500 hover:text-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="text-gray-400 hover:text-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -335,7 +335,7 @@ export default function AddItemModal({ isOpen, onClose, onCreate, isPending = fa
         <form onSubmit={handleSubmit} className="space-y-6">
           {/* ── STEP 1: Food Item ────────────────────────────────────────── */}
           <div>
-            <label htmlFor="food-item" className="block text-sm font-semibold text-brand-text mb-2">
+            <label htmlFor="food-item" className="block text-sm font-semibold text-gray-800 mb-2">
               1. Food Item <span className="text-red-500">*</span>
             </label>
             <div className="relative search-dropdown-container">
@@ -354,7 +354,7 @@ export default function AddItemModal({ isOpen, onClose, onCreate, isPending = fa
                     if (searchQuery.length >= 3 && searchResults.length > 0) setShowResults(true);
                   }}
                   placeholder="Type food name (e.g., milk, bread, eggs)..."
-                  className="w-full px-4 py-3 pr-10 border-2 border-gray-700 rounded-lg bg-gray-800 text-white placeholder-gray-500 focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none transition-colors text-base"
+                  className="w-full px-4 py-3 pr-10 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none transition-colors text-base"
                   disabled={submitting || isPending}
                   autoFocus
                 />
@@ -378,23 +378,23 @@ export default function AddItemModal({ isOpen, onClose, onCreate, isPending = fa
 
               {/* Search dropdown */}
               {showResults && searchResults.length > 0 && !selectedFood && (
-                <div className="absolute z-10 w-full mt-2 bg-gray-800 border-2 border-gray-700 rounded-lg shadow-xl max-h-64 overflow-y-auto">
-                  <div className="px-3 py-2 bg-gray-900 border-b border-gray-700">
-                    <p className="text-xs font-medium text-gray-400">Search Results</p>
+                <div className="absolute z-10 w-full mt-2 bg-white border-2 border-gray-200 rounded-lg shadow-xl max-h-64 overflow-y-auto">
+                  <div className="px-3 py-2 bg-gray-50 border-b border-gray-200">
+                    <p className="text-xs font-medium text-gray-600">Search Results</p>
                   </div>
                   {searchResults.map((food, idx) => (
                     <button key={idx} type="button" onClick={() => handleSelectFood(food)}
-                      className="w-full text-left px-4 py-3 hover:bg-gray-700 border-b border-gray-700 last:border-b-0 transition-colors group">
+                      className="w-full text-left px-4 py-3 hover:bg-green-50 border-b border-gray-100 last:border-b-0 transition-colors group">
                       <div className="flex items-start justify-between">
                         <div className="flex-1 min-w-0">
-                          <div className="font-medium text-sm text-gray-200 group-hover:text-green-400">
+                          <div className="font-medium text-sm text-gray-900 group-hover:text-green-700">
                             {food.description}
                           </div>
                           {food.brandName && (
                             <div className="mt-1 text-xs text-gray-500">{food.brandName}</div>
                           )}
                         </div>
-                        <svg className="h-5 w-5 text-gray-500 group-hover:text-green-500 flex-shrink-0 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <svg className="h-5 w-5 text-gray-400 group-hover:text-green-600 flex-shrink-0 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                         </svg>
                       </div>
@@ -404,19 +404,19 @@ export default function AddItemModal({ isOpen, onClose, onCreate, isPending = fa
               )}
 
               {showResults && searchResults.length === 0 && !searching && searchQuery.length >= 3 && (
-                <div className="absolute z-10 w-full mt-2 bg-gray-800 border-2 border-gray-700 rounded-lg shadow-xl p-4">
-                  <p className="text-sm text-gray-400">No results found. You can still add it manually.</p>
+                <div className="absolute z-10 w-full mt-2 bg-white border-2 border-gray-200 rounded-lg shadow-xl p-4">
+                  <p className="text-sm text-gray-500">No results found. You can still add it manually.</p>
                 </div>
               )}
             </div>
 
             {selectedFood && (
-              <div className="mt-3 p-3 bg-green-900/20 border border-green-800/50 rounded-lg">
+              <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded-lg">
                 <div className="flex items-center gap-2">
-                  <svg className="h-5 w-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="h-5 w-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                   </svg>
-                  <span className="text-sm font-medium text-green-400">{selectedFood.description}</span>
+                  <span className="text-sm font-medium text-green-800">{selectedFood.description}</span>
                 </div>
               </div>
             )}
@@ -424,10 +424,10 @@ export default function AddItemModal({ isOpen, onClose, onCreate, isPending = fa
 
           {/* ── STEP 2: Storage Location ─────────────────────────────────── */}
           <div>
-            <label htmlFor="storage-type" className="block text-sm font-semibold text-brand-text mb-2">
+            <label htmlFor="storage-type" className="block text-sm font-semibold text-gray-800 mb-2">
               2. Storage Location <span className="text-red-500">*</span>
               {recommendedStorage && recommendedStorage === storageType && name.trim().length >= 3 && (
-                <span className="ml-2 text-xs font-normal text-green-500">(Auto-filled)</span>
+                <span className="ml-2 text-xs font-normal text-green-600">(Auto-filled)</span>
               )}
             </label>
             <div className="relative">
@@ -443,7 +443,7 @@ export default function AddItemModal({ isOpen, onClose, onCreate, isPending = fa
                     fetchSuggestions(name, newStorage, isOpened, selectedFood, false);
                   }
                 }}
-                className="w-full px-4 py-3 border-2 border-gray-700 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none transition-colors text-base appearance-none bg-gray-800 text-white"
+                className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none transition-colors text-base appearance-none bg-white"
                 disabled={submitting || isPending || !name.trim()}
               >
                 <option value="pantry">Pantry / Room Temperature</option>
@@ -460,21 +460,21 @@ export default function AddItemModal({ isOpen, onClose, onCreate, isPending = fa
             {recommendedStorage && name.trim().length >= 3 && (
               <div className="mt-2">
                 {recommendedStorage === storageType ? (
-                  <div className="flex items-center gap-2 p-2 bg-green-900/20 border border-green-800/50 rounded-lg">
-                    <svg className="h-4 w-4 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <div className="flex items-center gap-2 p-2 bg-green-50 border border-green-200 rounded-lg">
+                    <svg className="h-4 w-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                     </svg>
-                    <p className="text-xs font-medium text-green-400">
+                    <p className="text-xs font-medium text-green-800">
                       ✓ Auto-filled: {getStorageDisplayName(recommendedStorage)} (recommended for this item)
                     </p>
                   </div>
                 ) : (
-                  <div className="flex items-center justify-between p-2 bg-amber-900/20 border border-amber-800/50 rounded-lg">
+                  <div className="flex items-center justify-between p-2 bg-amber-50 border border-amber-200 rounded-lg">
                     <div className="flex items-center gap-2">
-                      <svg className="h-4 w-4 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <svg className="h-4 w-4 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                       </svg>
-                      <p className="text-xs font-medium text-amber-400">
+                      <p className="text-xs font-medium text-amber-800">
                         💡 Recommended: {getStorageDisplayName(recommendedStorage)}
                       </p>
                     </div>
@@ -486,7 +486,7 @@ export default function AddItemModal({ isOpen, onClose, onCreate, isPending = fa
                         setStorageTypeManuallySet(false);
                         fetchSuggestions(name, rec, isOpened, selectedFood, false);
                       }}
-                      className="text-xs text-amber-500 underline hover:text-amber-400 font-medium ml-2"
+                      className="text-xs text-amber-700 underline hover:text-amber-900 font-medium ml-2"
                     >
                       Use recommended →
                     </button>
@@ -498,10 +498,10 @@ export default function AddItemModal({ isOpen, onClose, onCreate, isPending = fa
 
           {/* ── STEP 3: Expiration Date ───────────────────────────────────── */}
           <div>
-            <label htmlFor="expiration-date" className="block text-sm font-semibold text-brand-text mb-2">
+            <label htmlFor="expiration-date" className="block text-sm font-semibold text-gray-800 mb-2">
               3. Expiration Date <span className="text-gray-500 text-xs font-normal">(optional)</span>
               {suggestingExpiration && (
-                <span className="ml-2 text-xs text-blue-400 font-normal">⏳ Calculating...</span>
+                <span className="ml-2 text-xs text-blue-600 font-normal">⏳ Calculating...</span>
               )}
             </label>
             <input
@@ -510,20 +510,20 @@ export default function AddItemModal({ isOpen, onClose, onCreate, isPending = fa
               value={expirationDate}
               onChange={(e) => setExpirationDate(e.target.value)}
               min={today}
-              className="w-full px-4 py-3 border-2 border-gray-700 rounded-lg bg-gray-800 text-white focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none transition-colors text-base"
+              className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none transition-colors text-base"
               disabled={submitting || isPending || !name.trim()}
             />
 
             {suggestedExpiration && name.trim().length >= 3 && (
               <div className="mt-2">
                 {expirationDate === suggestedExpiration ? (
-                  <div className="flex items-start gap-2 p-3 bg-green-900/20 border border-green-800/50 rounded-lg">
-                    <svg className="h-5 w-5 text-green-500 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <div className="flex items-start gap-2 p-3 bg-green-50 border border-green-200 rounded-lg">
+                    <svg className="h-5 w-5 text-green-600 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                     </svg>
                     <div>
-                      <p className="text-sm font-medium text-green-400">✓ Suggested expiration date applied</p>
-                      <p className="text-xs text-green-500 mt-1">
+                      <p className="text-sm font-medium text-green-800">✓ Suggested expiration date applied</p>
+                      <p className="text-xs text-green-700 mt-1">
                         {new Date(suggestedExpiration).toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
                         {expirationConfidence === "high" && <span className="ml-2 font-semibold">(High confidence)</span>}
                         {expirationConfidence === "medium" && <span className="ml-2">(Medium confidence)</span>}
@@ -532,16 +532,16 @@ export default function AddItemModal({ isOpen, onClose, onCreate, isPending = fa
                     </div>
                   </div>
                 ) : (
-                  <div className="flex items-start gap-2 p-3 bg-blue-900/20 border border-blue-800/50 rounded-lg">
-                    <svg className="h-5 w-5 text-blue-500 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <div className="flex items-start gap-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                    <svg className="h-5 w-5 text-blue-600 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                     </svg>
                     <div>
-                      <p className="text-sm font-medium text-blue-400">
+                      <p className="text-sm font-medium text-blue-800">
                         💡 Suggested: {new Date(suggestedExpiration).toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
                       </p>
                       <button type="button" onClick={() => setExpirationDate(suggestedExpiration)}
-                        className="mt-1 text-xs text-blue-400 hover:text-blue-300 underline font-medium">
+                        className="mt-1 text-xs text-blue-600 hover:text-blue-700 underline font-medium">
                         Use suggested date →
                       </button>
                     </div>
@@ -558,9 +558,9 @@ export default function AddItemModal({ isOpen, onClose, onCreate, isPending = fa
           </div>
 
           {/* ── Additional Options ────────────────────────────────────────── */}
-          <div className="border-t border-gray-700 pt-4">
+          <div className="border-t border-gray-200 pt-4">
             <details className="group">
-              <summary className="cursor-pointer text-sm font-medium text-gray-400 hover:text-gray-200 flex items-center gap-2">
+              <summary className="cursor-pointer text-sm font-medium text-gray-700 hover:text-gray-900 flex items-center gap-2">
                 <svg className="h-4 w-4 transition-transform group-open:rotate-90" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                 </svg>
@@ -568,14 +568,14 @@ export default function AddItemModal({ isOpen, onClose, onCreate, isPending = fa
               </summary>
               <div className="mt-4 space-y-4 pl-6">
                 <div>
-                  <label htmlFor="quantity" className="block text-sm font-medium text-gray-400 mb-1">Quantity</label>
+                  <label htmlFor="quantity" className="block text-sm font-medium text-gray-700 mb-1">Quantity</label>
                   <input
                     id="quantity"
                     type="number"
                     min="1"
                     value={quantity}
                     onChange={(e) => setQuantity(e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-700 rounded-lg bg-gray-800 text-white focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none transition-colors"
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none transition-colors"
                     disabled={submitting || isPending}
                   />
                 </div>
@@ -592,10 +592,10 @@ export default function AddItemModal({ isOpen, onClose, onCreate, isPending = fa
                           fetchSuggestions(name, storageType, opened, selectedFood, false);
                         }
                       }}
-                      className="w-4 h-4 text-green-600 border-gray-700 bg-gray-800 rounded focus:ring-green-500"
+                      className="w-4 h-4 text-green-600 border-gray-300 rounded focus:ring-green-500"
                       disabled={submitting || isPending}
                     />
-                    <span className="text-sm font-medium text-gray-400">Item has been opened</span>
+                    <span className="text-sm font-medium text-gray-700">Item has been opened</span>
                   </label>
                   <p className="text-xs text-gray-500 mt-1 ml-6">Opened items typically have shorter shelf life</p>
                 </div>
@@ -605,8 +605,8 @@ export default function AddItemModal({ isOpen, onClose, onCreate, isPending = fa
 
           {/* ── Error ─────────────────────────────────────────────────────── */}
           {error && (
-            <div className="p-3 bg-red-900/20 border border-red-800/50 rounded-lg">
-              <p className="text-sm text-red-400">{error}</p>
+            <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+              <p className="text-sm text-red-600">{error}</p>
             </div>
           )}
 
@@ -614,7 +614,7 @@ export default function AddItemModal({ isOpen, onClose, onCreate, isPending = fa
           <div className="flex gap-3 pt-2">
             <button type="button" onClick={handleClose}
               disabled={submitting || isPending}
-              className="flex-1 px-4 py-2 border border-gray-700 rounded-lg text-gray-300 hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium">
+              className="flex-1 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors font-medium">
               Cancel
             </button>
             <button type="submit"
