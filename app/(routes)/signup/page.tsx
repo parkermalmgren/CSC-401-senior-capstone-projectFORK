@@ -81,21 +81,19 @@ export default function SignupPage() {
   }
 
   return (
-    <section className="h-screen w-screen flex items-center justify-center bg-brand-bg px-4 overflow-hidden fixed inset-0">
-      <div className="w-full max-w-md bg-brand-card p-8 rounded-2xl shadow-xl">
+    <section className="h-screen w-screen flex items-center justify-center bg-gray-50 px-4 overflow-hidden fixed inset-0" style={{overflow: 'hidden'}}>
+      <div className="w-full max-w-md">
         {/* Basket Icon */}
-        <div className="flex justify-center mb-6">
-          <BasketIcon size={80} className="mb-4" />
-        </div>
-        
-        {/* Signup Title */}
-        <h1 className="text-2xl font-bold text-brand-text text-center mb-6">Sign Up</h1>
+        <BasketIcon size={80} className="mb-4" />
 
-        <form onSubmit={onSubmit} className="space-y-4">
+        {/* Signup Title */}
+        <h1 className="text-2xl font-bold text-gray-800 text-center mb-4">Sign Up</h1>
+
+        <form onSubmit={onSubmit} className="space-y-3">
           {/* Name Fields */}
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 gap-3">
             <div>
-              <label htmlFor="firstName" className="block text-sm font-medium text-gray-300 mb-1">
+              <label htmlFor="firstName" className="block text-sm font-medium text-gray-700 mb-1">
                 First Name
               </label>
               <input
@@ -103,12 +101,12 @@ export default function SignupPage() {
                 type="text"
                 value={firstName}
                 onChange={(e) => setFirstName(e.target.value)}
-                className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none transition-colors"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none transition-colors"
                 required
               />
             </div>
             <div>
-              <label htmlFor="lastName" className="block text-sm font-medium text-gray-300 mb-1">
+              <label htmlFor="lastName" className="block text-sm font-medium text-gray-700 mb-1">
                 Last Name
               </label>
               <input
@@ -116,7 +114,7 @@ export default function SignupPage() {
                 type="text"
                 value={lastName}
                 onChange={(e) => setLastName(e.target.value)}
-                className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none transition-colors"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none transition-colors"
                 required
               />
             </div>
@@ -124,7 +122,7 @@ export default function SignupPage() {
 
           {/* Email Field */}
           <div>
-            <label htmlFor="email" className="block text-sm font-medium text-gray-300 mb-1">
+            <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
               Email
             </label>
             <input
@@ -132,14 +130,14 @@ export default function SignupPage() {
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none transition-colors"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none transition-colors"
               required
             />
           </div>
 
           {/* Password Field */}
           <div>
-            <label htmlFor="password" className="block text-sm font-medium text-gray-300 mb-1">
+            <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
               Password
             </label>
             <input
@@ -147,14 +145,14 @@ export default function SignupPage() {
               type="password"
               value={pw}
               onChange={(e) => setPw(e.target.value)}
-              className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none transition-colors"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none transition-colors"
               required
             />
           </div>
 
           {/* Confirm Password Field */}
           <div>
-            <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-300 mb-1">
+            <label htmlFor="confirmPassword" className="block text-sm font-medium text-gray-700 mb-1">
               Confirm Password
             </label>
             <input
@@ -162,7 +160,7 @@ export default function SignupPage() {
               type="password"
               value={confirmPw}
               onChange={(e) => setConfirmPw(e.target.value)}
-              className="w-full px-4 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none transition-colors"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent outline-none transition-colors"
               required
             />
           </div>
@@ -174,16 +172,16 @@ export default function SignupPage() {
               id="agreeTerms"
               checked={agreeTerms}
               onChange={(e) => setAgreeTerms(e.target.checked)}
-              className="w-4 h-4 text-green-600 bg-gray-700 border-gray-600 rounded focus:ring-green-500 focus:ring-2 mt-1"
+              className="w-4 h-4 text-green-600 bg-gray-100 border-gray-300 rounded focus:ring-green-500 focus:ring-2 mt-1"
               required
             />
-            <label htmlFor="agreeTerms" className="ml-2 text-sm text-gray-300">
+            <label htmlFor="agreeTerms" className="ml-2 text-sm text-gray-700">
               I agree to the{" "}
-              <Link href="#" className="text-green-500 hover:text-green-400">
+              <Link href="#" className="text-green-600 hover:text-green-700">
                 Terms of Service
               </Link>{" "}
               and{" "}
-              <Link href="#" className="text-green-500 hover:text-green-400">
+              <Link href="#" className="text-green-600 hover:text-green-700">
                 Privacy Policy
               </Link>
             </label>
@@ -198,13 +196,13 @@ export default function SignupPage() {
             {loading ? "Creating account..." : "Create account"}
           </button>
 
-          {err && <p className="text-sm text-red-400 text-center">{err}</p>}
+          {err && <p className="text-sm text-red-600 text-center">{err}</p>}
         </form>
 
         {/* Login Link */}
-        <p className="text-center text-gray-400 mt-4 text-sm">
+        <p className="text-center text-gray-600 mt-3 text-sm">
           Already have an account?{" "}
-          <Link href="/login" className="text-green-500 hover:text-green-400 font-medium">
+          <Link href="/login" className="text-green-600 hover:text-green-700 font-medium">
             Log in
           </Link>
         </p>
